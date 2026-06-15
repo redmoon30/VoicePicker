@@ -57,3 +57,10 @@ export const DEFAULT_CHARACTERS: Character[] = [
 export function colorOf(c: Character): string {
   return ROLE_COLORS[c.role];
 }
+
+// 依角色名從清單查標籤顏色（查不到回 null）。
+export function colorByName(name: string | null, list: Character[]): string | null {
+  if (!name) return null;
+  const c = list.find((x) => x.name === name);
+  return c ? ROLE_COLORS[c.role] : null;
+}
