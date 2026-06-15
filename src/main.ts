@@ -11,7 +11,7 @@ import {
 
 const AUDIO_EXT = new Set(['wav', 'mp3', 'm4a', 'aac', 'ogg', 'flac', 'wma', 'opus']);
 const GRID_COLS = 4;
-const PREV_SKIP = 1.0; // 按 W：游標在 1s 內的留言點視為「已在此」，跳更前一個
+const PREV_SKIP = 1.5; // 按 W：游標在 1.5s 內的留言點視為「已在此」，跳更前一個
 const NEXT_SKIP = 0.25;
 
 interface AudioEntry {
@@ -31,8 +31,9 @@ let comments = loadComments();
 let characters = loadCharacters();
 
 let pendingTime = 0;
+let composerAttachTime = true; // 留言是否對應秒數（toggle）
 let composerChar: string | null = null;
-let composerFocus: 'text' | number = 'text'; // 留言框焦點：文字 or 角色 chip 索引
+let composerFocus: 'text' | 'toggle' | number = 'text'; // 留言框焦點：文字 / 時間軸開關 / 角色 chip 索引
 let editingCharId: string | null = null;
 let nameCallback: (() => void) | null = null;
 
@@ -51,7 +52,7 @@ const commentsHeadEl = $<HTMLHeadingElement>('commentsHead');
 const commentListEl = $<HTMLUListElement>('commentlist');
 
 const composerEl = $<HTMLDivElement>('composer');
-const composerTimeEl = $<HTMLSpanElement>('composerTime');
+const composerToggle = $<HTMLButtonElement>('composerToggle');
 const composerText = $<HTMLTextAreaElement>('composerText');
 const composerCharsEl = $<HTMLDivElement>('composerChars');
 
@@ -124,7 +125,10 @@ function focusedFileName(): string | null {
   return currentFileName();
 }
 function commentsForFile(name: string | null): Comment[] {
-  return name ? comments.filter((c) => c.file === name).sort((a, b) => a.time - b.time) : [];
+  // 對應秒數的依時間排序在前，整體留言（time=null）排最後
+  return name
+    ? comments.filter((c) => c.file === name).sort((a, b) => (a.time ?? Infinity) - (b.time ?? Infinity))
+    : [];
 }
 function countComments(file: string): number {
   return comments.filter((c) => c.file === file).length;
@@ -211,9 +215,10 @@ async function selectIndex(i: number): Promise<void> {
 // ---- 波型標記（永遠是載入中的檔）----
 function renderMarkers(): void {
   regions.clearRegions();
-  commentsForFile(currentFileName()).forEach((c, idx) => {
+  const timed = commentsForFile(currentFileName()).filter((c) => c.time !== null);
+  timed.forEach((c, idx) => {
     regions.addRegion({
-      start: c.time,
+      start: c.time as number,
       content: String(idx + 1),
       color: colorByName(c.character, characters) ?? '#3b82f6',
       drag: false,
@@ -245,9 +250,14 @@ function renderComments(): void {
     const row = document.createElement('div');
     row.className = 'crow';
     const time = document.createElement('span');
-    time.className = 'ctime';
-    time.textContent = formatTime(c.time);
-    time.addEventListener('click', () => void openCommentAt(c));
+    if (c.time === null) {
+      time.className = 'ctime general';
+      time.textContent = '整體';
+    } else {
+      time.className = 'ctime';
+      time.textContent = formatTime(c.time);
+      time.addEventListener('click', () => void openCommentAt(c));
+    }
     const auth = document.createElement('span');
     auth.className = 'cauthor';
     auth.textContent = c.author;
@@ -316,6 +326,7 @@ function renderComments(): void {
 
 // 點留言秒數：必要時切到該檔再跳播（網格中也能用）
 async function openCommentAt(c: Comment): Promise<void> {
+  if (c.time === null) return;
   const idx = entries.findIndex((e) => e.name === c.file);
   if (idx < 0) return;
   if (view === 'grid') setView('single');
@@ -356,17 +367,31 @@ function startComment(): void {
 function openComposer(): void {
   ws.pause();
   pendingTime = ws.getCurrentTime();
-  composerTimeEl.textContent = formatTime(pendingTime);
+  composerAttachTime = true;
   composerText.value = '';
   composerChar = null;
   composerFocus = 'text';
-  drawComposerChars();
+  drawComposer();
   composerEl.classList.remove('hidden');
   composerText.focus();
 }
 function closeComposer(): void {
   composerEl.classList.add('hidden');
   composerFocus = 'text';
+}
+function drawComposer(): void {
+  drawToggle();
+  drawComposerChars();
+}
+function drawToggle(): void {
+  if (composerAttachTime) {
+    composerToggle.textContent = `對應秒數 ${formatTime(pendingTime)}`;
+    composerToggle.classList.remove('off');
+  } else {
+    composerToggle.textContent = '整體留言（不對應秒數）';
+    composerToggle.classList.add('off');
+  }
+  composerToggle.classList.toggle('focused', composerFocus === 'toggle');
 }
 function drawComposerChars(): void {
   const focusIdx = typeof composerFocus === 'number' ? composerFocus : undefined;
@@ -381,51 +406,115 @@ function saveComposer(): void {
   if (!text) return;
   const f = currentFileName();
   if (!f) return;
-  comments.push({ id: uid(), file: f, time: pendingTime, text, author, character: composerChar });
+  comments.push({
+    id: uid(),
+    file: f,
+    time: composerAttachTime ? pendingTime : null,
+    text,
+    author,
+    character: composerChar,
+  });
   saveComments(comments);
   renderMarkers();
   renderComments();
   renderFileList();
 }
-// 留言框內鍵盤：文字模式打字 + Enter 存；↓/Tab 進角色區用方向鍵選
+
+// 焦點移動：文字 → 時間軸開關 → 角色 chips（垂直三段）
+function goToggle(): void {
+  composerFocus = 'toggle';
+  composerText.blur();
+  drawComposer();
+}
+function backToText(): void {
+  composerFocus = 'text';
+  drawComposer();
+  composerText.focus();
+}
 function enterChips(): void {
   if (characters.length === 0) return;
   const sel = composerChar ? characters.findIndex((c) => c.name === composerChar) : -1;
   composerFocus = sel >= 0 ? sel : 0;
   composerText.blur();
-  drawComposerChars();
-}
-function backToText(): void {
-  composerFocus = 'text';
-  drawComposerChars();
-  composerText.focus();
+  drawComposer();
 }
 function toggleChip(idx: number): void {
   const name = characters[idx].name;
   composerChar = composerChar === name ? null : name;
-  drawComposerChars();
+  drawComposer();
 }
+
+// 依實際座標在 chips 間做 2D 方向移動（flex-wrap 每排數量不固定）
+function navChip(cur: number, dir: 'up' | 'down' | 'left' | 'right'): number | 'toggle' {
+  const els = Array.from(composerCharsEl.children) as HTMLElement[];
+  if (els.length === 0) return cur;
+  const r = els.map((el) => el.getBoundingClientRect());
+  const c = r[cur];
+  const cx = c.left + c.width / 2;
+  const cy = c.top + c.height / 2;
+  const rowTol = c.height / 2;
+
+  if (dir === 'left' || dir === 'right') {
+    let best = -1, bestDist = Infinity;
+    r.forEach((rect, i) => {
+      if (i === cur) return;
+      if (Math.abs(rect.top + rect.height / 2 - cy) > rowTol) return; // 非同排
+      const rx = rect.left + rect.width / 2;
+      if (dir === 'left' && rx < cx && cx - rx < bestDist) { bestDist = cx - rx; best = i; }
+      if (dir === 'right' && rx > cx && rx - cx < bestDist) { bestDist = rx - cx; best = i; }
+    });
+    return best >= 0 ? best : cur;
+  }
+
+  // up / down：先取最近的相鄰排，再取該排中水平最接近者
+  let best = -1, bestScore = Infinity;
+  r.forEach((rect, i) => {
+    if (i === cur) return;
+    const ry = rect.top + rect.height / 2;
+    const ok = dir === 'up' ? ry < cy - rowTol : ry > cy + rowTol;
+    if (!ok) return;
+    const score = Math.abs(ry - cy) * 1000 + Math.abs(rect.left + rect.width / 2 - cx);
+    if (score < bestScore) { bestScore = score; best = i; }
+  });
+  if (dir === 'up' && best < 0) return 'toggle'; // 沒有上一排 → 回時間軸開關
+  return best >= 0 ? best : cur;
+}
+
 function handleComposerKey(ev: KeyboardEvent): void {
   if (ev.code === 'Escape') { ev.preventDefault(); closeComposer(); return; }
 
   if (composerFocus === 'text') {
     if (ev.code === 'Enter' && !ev.shiftKey) { ev.preventDefault(); saveComposer(); return; }
-    if (ev.code === 'ArrowDown' || ev.code === 'Tab') { ev.preventDefault(); enterChips(); return; }
+    if (ev.code === 'ArrowDown' || ev.code === 'Tab') { ev.preventDefault(); goToggle(); return; }
     return; // 其餘交給 textarea（打字、Shift+Enter 換行、文字內游標移動）
   }
 
-  const n = characters.length;
+  if (composerFocus === 'toggle') {
+    switch (ev.code) {
+      case 'Enter': ev.preventDefault(); saveComposer(); break;
+      case 'Space': ev.preventDefault(); composerAttachTime = !composerAttachTime; drawComposer(); break;
+      case 'ArrowUp': ev.preventDefault(); backToText(); break;
+      case 'ArrowDown': case 'Tab': ev.preventDefault(); enterChips(); break;
+    }
+    return;
+  }
+
+  // 角色 chip 模式
   const idx = composerFocus;
   switch (ev.code) {
     case 'Enter': ev.preventDefault(); saveComposer(); break;
     case 'Space': ev.preventDefault(); toggleChip(idx); break;
-    case 'ArrowRight':
-    case 'ArrowDown': ev.preventDefault(); composerFocus = Math.min(n - 1, idx + 1); drawComposerChars(); break;
-    case 'ArrowLeft': ev.preventDefault(); composerFocus = Math.max(0, idx - 1); drawComposerChars(); break;
-    case 'ArrowUp': ev.preventDefault(); if (idx === 0) backToText(); else { composerFocus = idx - 1; drawComposerChars(); } break;
+    case 'ArrowRight': { ev.preventDefault(); const t = navChip(idx, 'right'); if (typeof t === 'number') { composerFocus = t; drawComposer(); } break; }
+    case 'ArrowLeft': { ev.preventDefault(); const t = navChip(idx, 'left'); if (typeof t === 'number') { composerFocus = t; drawComposer(); } break; }
+    case 'ArrowDown': { ev.preventDefault(); const t = navChip(idx, 'down'); if (typeof t === 'number') { composerFocus = t; drawComposer(); } break; }
+    case 'ArrowUp': { ev.preventDefault(); const t = navChip(idx, 'up'); if (t === 'toggle') goToggle(); else { composerFocus = t; drawComposer(); } break; }
     case 'Tab': ev.preventDefault(); backToText(); break;
   }
 }
+composerToggle.addEventListener('click', () => {
+  composerAttachTime = !composerAttachTime;
+  drawComposer();
+});
 
 // ---- 名字 ----
 function openNameModal(cb: (() => void) | null): void {
@@ -507,7 +596,9 @@ function seekBy(delta: number): void {
 // dir<0：上一個留言點（游標在 PREV_SKIP 內的點視為已在此，跳更前一個）
 // dir>0：下一個留言點
 function jumpMarker(dir: number): void {
-  const times = commentsForFile(currentFileName()).map((c) => c.time);
+  const times = commentsForFile(currentFileName())
+    .filter((c) => c.time !== null)
+    .map((c) => c.time as number);
   if (times.length === 0) return;
   const t = ws.getCurrentTime();
   let target: number | undefined;

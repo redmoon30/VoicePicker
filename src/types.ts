@@ -2,7 +2,7 @@
 export interface Comment {
   id: string;
   file: string; // 所屬音檔檔名（目前以檔名為 key）
-  time: number; // 秒數
+  time: number | null; // 秒數；null = 整體留言（不對應秒數）
   text: string;
   author: string; // 留言者名字
   character: string | null; // 掛的角色名（無則 null）
