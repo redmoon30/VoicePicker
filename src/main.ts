@@ -11,7 +11,7 @@ import {
 
 const AUDIO_EXT = new Set(['wav', 'mp3', 'm4a', 'aac', 'ogg', 'flac', 'wma', 'opus']);
 const GRID_COLS = 4;
-const PREV_SKIP = 0.5; // 按 W：游標在 0.5s 內的留言點視為「已在此」，跳更前一個
+const PREV_SKIP = 1.0; // 按 W：游標在 1s 內的留言點視為「已在此」，跳更前一個
 const NEXT_SKIP = 0.25;
 
 interface AudioEntry {
@@ -43,6 +43,7 @@ const editCharsBtn = $<HTMLButtonElement>('editChars');
 const fileListEl = $<HTMLUListElement>('filelist');
 const nowPlayingEl = $<HTMLHeadingElement>('nowplaying');
 const statusEl = $<HTMLDivElement>('status');
+const appVerEl = $<HTMLSpanElement>('appVer');
 const sidebarEl = $<HTMLElement>('sidebar');
 const playerEl = $<HTMLElement>('player');
 const gridEl = $<HTMLDivElement>('grid');
@@ -75,10 +76,10 @@ const ws = WaveSurfer.create({
 const regions = ws.registerPlugin(RegionsPlugin.create());
 
 ws.on('ready', () => {
-  statusEl.textContent = `時長 ${formatTime(ws.getDuration())}`;
+  statusEl.textContent = `${formatTimeMs(0)} / ${formatTimeMs(ws.getDuration())}`;
 });
 ws.on('timeupdate', (t: number) => {
-  statusEl.textContent = `${formatTime(t)} / ${formatTime(ws.getDuration())}`;
+  statusEl.textContent = `${formatTimeMs(t)} / ${formatTimeMs(ws.getDuration())}`;
 });
 ws.on('finish', () => {
   if (currentIndex < entries.length - 1) void selectIndex(currentIndex + 1);
@@ -95,6 +96,14 @@ function formatTime(s: number): string {
   const m = Math.floor(s / 60);
   const sec = Math.floor(s % 60).toString().padStart(2, '0');
   return `${m}:${sec}`;
+}
+// 播放器狀態用：精準到 1/100 秒（M:SS.cc）
+function formatTimeMs(s: number): string {
+  if (!isFinite(s)) return '0:00.00';
+  const m = Math.floor(s / 60);
+  const sec = Math.floor(s % 60);
+  const cs = Math.floor((s - Math.floor(s)) * 100);
+  return `${m}:${sec.toString().padStart(2, '0')}.${cs.toString().padStart(2, '0')}`;
 }
 function uid(): string {
   return Math.random().toString(36).slice(2) + Date.now().toString(36);
@@ -520,6 +529,7 @@ function jumpMarker(dir: number): void {
 function setView(v: ViewMode): void {
   view = v;
   if (v === 'grid') {
+    ws.pause(); // 進網格直接停掉正在播放的聲音
     renderGrid();
     sidebarEl.classList.add('hidden');
     playerEl.classList.add('hidden');
@@ -598,5 +608,6 @@ document.addEventListener('keydown', (ev) => {
   }
 });
 
-// ---- 啟動：首次開啟若沒名字就先問 ----
-if (!author) openNameModal(null);
+// ---- 啟動 ----
+appVerEl.textContent = 'v' + __APP_VERSION__;
+if (!author) openNameModal(null); // 首次開啟先問名字

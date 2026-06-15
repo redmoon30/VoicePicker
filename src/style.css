@@ -53,6 +53,11 @@ button.ghost {
   color: var(--muted);
 }
 
+.app-title { font-size: 15px; font-weight: 600; padding: 2px 4px 10px; }
+.app-title .ver { font-size: 11px; color: var(--muted); font-weight: 400; }
+.sidebar-foot { margin-top: 10px; padding-top: 10px; border-top: 1px solid var(--line); }
+.sidebar-foot button { width: 100%; }
+
 #filelist {
   list-style: none;
   margin: 6px 0 0;
@@ -93,7 +98,7 @@ button.ghost {
   border-radius: 8px;
   padding: 12px;
 }
-#status { font-variant-numeric: tabular-nums; color: var(--muted); font-size: 14px; }
+#status { font-variant-numeric: tabular-nums; color: var(--text); font-size: 22px; font-weight: 500; letter-spacing: 0.5px; }
 .hint { margin-top: auto; color: var(--muted); font-size: 12px; line-height: 1.6; }
 
 /* ---- 右側留言列 ---- */
