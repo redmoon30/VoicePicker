@@ -1,0 +1,97 @@
+:root {
+  --bg: #1e2430;
+  --panel: #262e3d;
+  --line: #38445a;
+  --text: #e6ebf2;
+  --muted: #8a97ad;
+  --accent: #3b82f6;
+  font-family: system-ui, "Microsoft JhengHei", sans-serif;
+}
+
+* { box-sizing: border-box; }
+
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--text);
+}
+
+#app {
+  display: flex;
+  height: 100vh;
+}
+
+#sidebar {
+  width: 280px;
+  flex-shrink: 0;
+  background: var(--panel);
+  border-right: 1px solid var(--line);
+  display: flex;
+  flex-direction: column;
+  padding: 12px;
+  gap: 12px;
+  overflow: hidden;
+}
+
+#pick {
+  padding: 10px;
+  background: var(--accent);
+  color: #fff;
+  border: none;
+  border-radius: 6px;
+  font-size: 14px;
+  cursor: pointer;
+}
+#pick:hover { filter: brightness(1.1); }
+
+#filelist {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  overflow-y: auto;
+  flex: 1;
+}
+#filelist li {
+  padding: 8px 10px;
+  border-radius: 4px;
+  font-size: 13px;
+  cursor: pointer;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+#filelist li:hover { background: #2f3a4d; }
+#filelist li.active { background: var(--accent); color: #fff; }
+
+#player {
+  flex: 1;
+  padding: 32px;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+#nowplaying {
+  margin: 0;
+  font-size: 18px;
+  font-weight: 600;
+}
+
+#waveform {
+  background: #161b25;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 12px;
+}
+
+#status {
+  font-variant-numeric: tabular-nums;
+  color: var(--muted);
+  font-size: 14px;
+}
+
+.hint {
+  margin-top: auto;
+  color: var(--muted);
+  font-size: 12px;
+}

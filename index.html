@@ -1,0 +1,23 @@
+<!doctype html>
+<html lang="zh-Hant">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>VoicePicker</title>
+  </head>
+  <body>
+    <div id="app">
+      <aside id="sidebar">
+        <button id="pick">選擇資料夾</button>
+        <ul id="filelist"></ul>
+      </aside>
+      <main id="player">
+        <h2 id="nowplaying">尚未選擇檔案</h2>
+        <div id="waveform"></div>
+        <div id="status"></div>
+        <p class="hint">Space 播放／暫停　·　A／D 後退/前進 5 秒（P1）</p>
+      </main>
+    </div>
+    <script type="module" src="/src/main.ts"></script>
+  </body>
+</html>
