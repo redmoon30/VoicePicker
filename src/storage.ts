@@ -17,10 +17,28 @@ export function saveAuthor(name: string): void {
   localStorage.setItem(K_AUTHOR, name);
 }
 
+// 把任意來源（舊格式 / NAS json）的留言正規化。相容舊的 character: string|null。
+export function normalizeComment(c: unknown): Comment {
+  const o = (c ?? {}) as Record<string, unknown>;
+  let ch = o.character;
+  let character: string[];
+  if (Array.isArray(ch)) character = ch.filter((x): x is string => typeof x === 'string');
+  else if (typeof ch === 'string') character = [ch];
+  else character = [];
+  return {
+    id: typeof o.id === 'string' ? o.id : Math.random().toString(36).slice(2),
+    file: typeof o.file === 'string' ? o.file : '',
+    time: typeof o.time === 'number' ? o.time : null,
+    text: typeof o.text === 'string' ? o.text : '',
+    author: typeof o.author === 'string' ? o.author : '',
+    character,
+  };
+}
+
 export function loadComments(): Comment[] {
   try {
     const raw = localStorage.getItem(K_COMMENTS);
-    return raw ? (JSON.parse(raw) as Comment[]) : [];
+    return raw ? (JSON.parse(raw) as unknown[]).map(normalizeComment) : [];
   } catch {
     return [];
   }
