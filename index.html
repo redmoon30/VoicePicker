@@ -9,7 +9,6 @@
     <div id="app">
       <aside id="sidebar">
         <button id="pick">選擇資料夾</button>
-        <button id="editChars" class="ghost">編輯角色名單</button>
         <ul id="filelist"></ul>
       </aside>
 
@@ -18,25 +17,31 @@
         <div id="waveform"></div>
         <div id="status"></div>
         <p class="hint">
-          Space 播放/暫停 · A/D ±5秒 · W/S 跳留言點 · C 寫留言 · Tab 進網格（方向鍵選檔、Enter 開啟）
+          Space 播放/暫停 · A/D ±5秒 · W/S 跳留言點 · C 寫留言 · Tab 進網格
         </p>
       </main>
 
+      <div id="grid" class="hidden"></div>
+
       <aside id="comments">
-        <h3>留言（本檔）</h3>
+        <h3 id="commentsHead">留言</h3>
         <ul id="commentlist"></ul>
+        <div class="panel-foot">
+          <button id="editChars" class="ghost">編輯角色名單</button>
+        </div>
       </aside>
     </div>
-
-    <div id="grid" class="hidden"></div>
 
     <!-- 留言輸入 -->
     <div id="composer" class="modal hidden">
       <div class="modal-box">
         <div class="modal-head">留言 @ <span id="composerTime">0:00</span></div>
-        <textarea id="composerText" rows="3" placeholder="輸入留言…（Enter 儲存，Shift+Enter 換行，Esc 取消）"></textarea>
+        <textarea id="composerText" rows="3" placeholder="輸入留言…"></textarea>
         <div class="picker-label">掛角色（可不選）</div>
         <div id="composerChars" class="char-picker"></div>
+        <div class="picker-label">
+          Enter 儲存 · Shift+Enter 換行 · ↓ 進角色區 · 角色區方向鍵移動、空白鍵選取 · Esc 取消
+        </div>
       </div>
     </div>
 

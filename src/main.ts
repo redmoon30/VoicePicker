@@ -11,6 +11,8 @@ import {
 
 const AUDIO_EXT = new Set(['wav', 'mp3', 'm4a', 'aac', 'ogg', 'flac', 'wma', 'opus']);
 const GRID_COLS = 4;
+const PREV_SKIP = 0.5; // 按 W：游標在 0.5s 內的留言點視為「已在此」，跳更前一個
+const NEXT_SKIP = 0.25;
 
 interface AudioEntry {
   name: string;
@@ -19,18 +21,19 @@ interface AudioEntry {
 
 // ---- 狀態 ----
 let entries: AudioEntry[] = [];
-let currentIndex = -1;
+let currentIndex = -1; // 目前載入播放的檔
 let currentUrl: string | null = null;
 let view: ViewMode = 'single';
-let gridIndex = 0;
+let gridIndex = 0; // 網格中高亮的檔
 
 let author = loadAuthor();
 let comments = loadComments();
 let characters = loadCharacters();
 
-let pendingTime = 0; // 撰寫中留言的秒數
+let pendingTime = 0;
 let composerChar: string | null = null;
-let editingCharId: string | null = null; // 側欄中正在改角色的留言 id
+let composerFocus: 'text' | number = 'text'; // 留言框焦點：文字 or 角色 chip 索引
+let editingCharId: string | null = null;
 let nameCallback: (() => void) | null = null;
 
 // ---- DOM ----
@@ -40,8 +43,10 @@ const editCharsBtn = $<HTMLButtonElement>('editChars');
 const fileListEl = $<HTMLUListElement>('filelist');
 const nowPlayingEl = $<HTMLHeadingElement>('nowplaying');
 const statusEl = $<HTMLDivElement>('status');
-const appEl = $<HTMLDivElement>('app');
+const sidebarEl = $<HTMLElement>('sidebar');
+const playerEl = $<HTMLElement>('player');
 const gridEl = $<HTMLDivElement>('grid');
+const commentsHeadEl = $<HTMLHeadingElement>('commentsHead');
 const commentListEl = $<HTMLUListElement>('commentlist');
 
 const composerEl = $<HTMLDivElement>('composer');
@@ -84,33 +89,34 @@ regions.on('region-clicked', (region, e) => {
   void ws.play();
 });
 
-// ---- 工具函式 ----
+// ---- 工具 ----
 function formatTime(s: number): string {
   if (!isFinite(s)) return '0:00';
   const m = Math.floor(s / 60);
   const sec = Math.floor(s % 60).toString().padStart(2, '0');
   return `${m}:${sec}`;
 }
-
 function uid(): string {
   return Math.random().toString(36).slice(2) + Date.now().toString(36);
 }
-
 function escapeHtml(s: string): string {
   return s.replace(/[&<>"']/g, (m) =>
     ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[m]!,
   );
 }
-
 function currentFileName(): string | null {
   return currentIndex >= 0 && currentIndex < entries.length ? entries[currentIndex].name : null;
 }
-
-function commentsForCurrentFile(): Comment[] {
-  const f = currentFileName();
-  return f ? comments.filter((c) => c.file === f).sort((a, b) => a.time - b.time) : [];
+// 留言區「焦點檔」：單檔=載入中的檔；網格=高亮的檔（這樣網格巡覽可即時看各檔留言）
+function focusedFileName(): string | null {
+  if (view === 'grid') {
+    return gridIndex >= 0 && gridIndex < entries.length ? entries[gridIndex].name : null;
+  }
+  return currentFileName();
 }
-
+function commentsForFile(name: string | null): Comment[] {
+  return name ? comments.filter((c) => c.file === name).sort((a, b) => a.time - b.time) : [];
+}
 function countComments(file: string): number {
   return comments.filter((c) => c.file === file).length;
 }
@@ -193,10 +199,10 @@ async function selectIndex(i: number): Promise<void> {
   void ws.play();
 }
 
-// ---- 波型標記 ----
+// ---- 波型標記（永遠是載入中的檔）----
 function renderMarkers(): void {
   regions.clearRegions();
-  commentsForCurrentFile().forEach((c, idx) => {
+  commentsForFile(currentFileName()).forEach((c, idx) => {
     regions.addRegion({
       start: c.time,
       content: String(idx + 1),
@@ -207,15 +213,18 @@ function renderMarkers(): void {
   });
 }
 
-// ---- 留言列（右側）----
+// ---- 留言列（顯示「焦點檔」，不受 Tab 影響）----
 function renderComments(): void {
+  const fname = focusedFileName();
+  commentsHeadEl.textContent = fname ? `留言 · ${fname}` : '留言';
+
   commentListEl.innerHTML = '';
-  const list = commentsForCurrentFile();
+  const list = commentsForFile(fname);
   if (list.length === 0) {
     const empty = document.createElement('li');
     empty.style.color = 'var(--muted)';
     empty.style.fontSize = '13px';
-    empty.textContent = '尚無留言。播放時按 C 新增。';
+    empty.textContent = fname ? '尚無留言。播放時按 C 新增。' : '尚未選擇檔案。';
     commentListEl.appendChild(empty);
     return;
   }
@@ -224,13 +233,12 @@ function renderComments(): void {
     const li = document.createElement('li');
     li.className = 'citem';
 
-    // 第一列：秒數 / 作者 / 刪除
     const row = document.createElement('div');
     row.className = 'crow';
     const time = document.createElement('span');
     time.className = 'ctime';
     time.textContent = formatTime(c.time);
-    time.addEventListener('click', () => { ws.setTime(c.time); void ws.play(); });
+    time.addEventListener('click', () => void openCommentAt(c));
     const auth = document.createElement('span');
     auth.className = 'cauthor';
     auth.textContent = c.author;
@@ -247,7 +255,6 @@ function renderComments(): void {
     });
     row.append(time, auth, del);
 
-    // 內文（雙擊編輯）
     const text = document.createElement('div');
     text.className = 'ctext';
     text.textContent = c.text;
@@ -265,7 +272,6 @@ function renderComments(): void {
       else { text.textContent = c.text; }
     });
 
-    // 角色標籤列
     const tagRow = document.createElement('div');
     tagRow.className = 'ctag-row';
     if (editingCharId === c.id) {
@@ -299,17 +305,28 @@ function renderComments(): void {
   });
 }
 
-// 角色 chips（composer 與 inline 共用）
+// 點留言秒數：必要時切到該檔再跳播（網格中也能用）
+async function openCommentAt(c: Comment): Promise<void> {
+  const idx = entries.findIndex((e) => e.name === c.file);
+  if (idx < 0) return;
+  if (view === 'grid') setView('single');
+  if (idx !== currentIndex) await selectIndex(idx);
+  ws.setTime(c.time);
+  void ws.play();
+}
+
+// 角色 chips（共用）。focusedIndex 用於留言框鍵盤巡覽。
 function renderCharChips(
   container: HTMLElement,
   selected: string | null,
   onSelect: (name: string | null) => void,
+  focusedIndex?: number,
 ): void {
   container.innerHTML = '';
-  characters.forEach((ch) => {
+  characters.forEach((ch, i) => {
     const chip = document.createElement('button');
     chip.type = 'button';
-    chip.className = 'charchip';
+    chip.className = 'charchip' + (i === focusedIndex ? ' focused' : '');
     chip.textContent = ch.name;
     chip.style.borderColor = ROLE_COLORS[ch.role];
     if (selected === ch.name) {
@@ -327,28 +344,31 @@ function startComment(): void {
   if (!author) { openNameModal(() => openComposer()); return; }
   openComposer();
 }
-
 function openComposer(): void {
   ws.pause();
   pendingTime = ws.getCurrentTime();
   composerTimeEl.textContent = formatTime(pendingTime);
   composerText.value = '';
   composerChar = null;
+  composerFocus = 'text';
   drawComposerChars();
   composerEl.classList.remove('hidden');
   composerText.focus();
 }
-
+function closeComposer(): void {
+  composerEl.classList.add('hidden');
+  composerFocus = 'text';
+}
 function drawComposerChars(): void {
+  const focusIdx = typeof composerFocus === 'number' ? composerFocus : undefined;
   renderCharChips(composerCharsEl, composerChar, (name) => {
     composerChar = name;
     drawComposerChars();
-  });
+  }, focusIdx);
 }
-
 function saveComposer(): void {
   const text = composerText.value.trim();
-  composerEl.classList.add('hidden');
+  closeComposer();
   if (!text) return;
   const f = currentFileName();
   if (!f) return;
@@ -358,12 +378,45 @@ function saveComposer(): void {
   renderComments();
   renderFileList();
 }
+// 留言框內鍵盤：文字模式打字 + Enter 存；↓/Tab 進角色區用方向鍵選
+function enterChips(): void {
+  if (characters.length === 0) return;
+  const sel = composerChar ? characters.findIndex((c) => c.name === composerChar) : -1;
+  composerFocus = sel >= 0 ? sel : 0;
+  composerText.blur();
+  drawComposerChars();
+}
+function backToText(): void {
+  composerFocus = 'text';
+  drawComposerChars();
+  composerText.focus();
+}
+function toggleChip(idx: number): void {
+  const name = characters[idx].name;
+  composerChar = composerChar === name ? null : name;
+  drawComposerChars();
+}
+function handleComposerKey(ev: KeyboardEvent): void {
+  if (ev.code === 'Escape') { ev.preventDefault(); closeComposer(); return; }
 
-composerText.addEventListener('keydown', (e) => {
-  e.stopPropagation();
-  if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); saveComposer(); }
-  else if (e.key === 'Escape') { e.preventDefault(); composerEl.classList.add('hidden'); }
-});
+  if (composerFocus === 'text') {
+    if (ev.code === 'Enter' && !ev.shiftKey) { ev.preventDefault(); saveComposer(); return; }
+    if (ev.code === 'ArrowDown' || ev.code === 'Tab') { ev.preventDefault(); enterChips(); return; }
+    return; // 其餘交給 textarea（打字、Shift+Enter 換行、文字內游標移動）
+  }
+
+  const n = characters.length;
+  const idx = composerFocus;
+  switch (ev.code) {
+    case 'Enter': ev.preventDefault(); saveComposer(); break;
+    case 'Space': ev.preventDefault(); toggleChip(idx); break;
+    case 'ArrowRight':
+    case 'ArrowDown': ev.preventDefault(); composerFocus = Math.min(n - 1, idx + 1); drawComposerChars(); break;
+    case 'ArrowLeft': ev.preventDefault(); composerFocus = Math.max(0, idx - 1); drawComposerChars(); break;
+    case 'ArrowUp': ev.preventDefault(); if (idx === 0) backToText(); else { composerFocus = idx - 1; drawComposerChars(); } break;
+    case 'Tab': ev.preventDefault(); backToText(); break;
+  }
+}
 
 // ---- 名字 ----
 function openNameModal(cb: (() => void) | null): void {
@@ -372,7 +425,6 @@ function openNameModal(cb: (() => void) | null): void {
   nameModalEl.classList.remove('hidden');
   nameInput.focus();
 }
-
 function confirmName(): void {
   const v = nameInput.value.trim();
   if (!v) return;
@@ -383,7 +435,6 @@ function confirmName(): void {
   nameCallback = null;
   if (cb) cb();
 }
-
 nameInput.addEventListener('keydown', (e) => {
   e.stopPropagation();
   if (e.key === 'Enter') { e.preventDefault(); confirmName(); }
@@ -396,7 +447,6 @@ editCharsBtn.addEventListener('click', () => {
   renderCharEditList();
   charModalEl.classList.remove('hidden');
 });
-
 function renderCharEditList(): void {
   charEditListEl.innerHTML = '';
   characters.forEach((ch, i) => {
@@ -421,12 +471,10 @@ function renderCharEditList(): void {
     charEditListEl.appendChild(li);
   });
 }
-
 addCharBtn.addEventListener('click', () => {
   const name = newCharName.value.trim();
   if (!name) return;
-  const role = newCharRole.value as Character['role'];
-  characters.push({ name, role });
+  characters.push({ name, role: newCharRole.value as Character['role'] });
   saveCharacters(characters);
   newCharName.value = '';
   renderCharEditList();
@@ -441,28 +489,27 @@ closeCharBtn.addEventListener('click', () => {
   renderComments();
 });
 
-// ---- 播放器控制 ----
+// ---- 播放控制 ----
 function seekBy(delta: number): void {
   const dur = ws.getDuration();
   if (!isFinite(dur) || dur === 0) return;
-  const t = Math.min(Math.max(0, ws.getCurrentTime() + delta), dur);
-  ws.setTime(t);
+  ws.setTime(Math.min(Math.max(0, ws.getCurrentTime() + delta), dur));
 }
-
-// dir < 0：上一個留言點；dir > 0：下一個
+// dir<0：上一個留言點（游標在 PREV_SKIP 內的點視為已在此，跳更前一個）
+// dir>0：下一個留言點
 function jumpMarker(dir: number): void {
-  const times = commentsForCurrentFile().map((c) => c.time);
+  const times = commentsForFile(currentFileName()).map((c) => c.time);
   if (times.length === 0) return;
   const t = ws.getCurrentTime();
   let target: number | undefined;
   if (dir < 0) {
     for (let k = times.length - 1; k >= 0; k--) {
-      if (times[k] < t - 0.25) { target = times[k]; break; }
+      if (times[k] < t - PREV_SKIP) { target = times[k]; break; }
     }
     target ??= times[0];
   } else {
     for (let k = 0; k < times.length; k++) {
-      if (times[k] > t + 0.25) { target = times[k]; break; }
+      if (times[k] > t + NEXT_SKIP) { target = times[k]; break; }
     }
     target ??= times[times.length - 1];
   }
@@ -474,16 +521,22 @@ function setView(v: ViewMode): void {
   view = v;
   if (v === 'grid') {
     renderGrid();
-    appEl.classList.add('hidden');
+    sidebarEl.classList.add('hidden');
+    playerEl.classList.add('hidden');
     gridEl.classList.remove('hidden');
   } else {
     gridEl.classList.add('hidden');
-    appEl.classList.remove('hidden');
+    sidebarEl.classList.remove('hidden');
+    playerEl.classList.remove('hidden');
   }
+  renderComments(); // 留言區跟著焦點檔更新
 }
-
 function renderGrid(): void {
   gridEl.innerHTML = '';
+  const hint = document.createElement('div');
+  hint.className = 'gridhint';
+  hint.textContent = 'WASD 移動 · 空白鍵開啟 · Tab 返回單檔';
+  gridEl.appendChild(hint);
   entries.forEach((e, i) => {
     const card = document.createElement('div');
     card.className = 'gridcard' + (i === gridIndex ? ' selected' : '');
@@ -498,12 +551,12 @@ function renderGrid(): void {
     gridEl.appendChild(card);
   });
 }
-
 function moveGrid(delta: number): void {
   const n = entries.length;
   if (n === 0) return;
   gridIndex = Math.min(Math.max(0, gridIndex + delta), n - 1);
   renderGrid();
+  renderComments(); // 即時顯示高亮檔的留言
 }
 
 // ---- 全域鍵盤 ----
@@ -512,22 +565,23 @@ function isTyping(): boolean {
   if (!el) return false;
   return el.tagName === 'INPUT' || el.tagName === 'TEXTAREA' || el.isContentEditable;
 }
-
 function anyModalOpen(): boolean {
-  return [composerEl, nameModalEl, charModalEl].some((e) => !e.classList.contains('hidden'));
+  return !nameModalEl.classList.contains('hidden') || !charModalEl.classList.contains('hidden');
 }
 
 document.addEventListener('keydown', (ev) => {
+  // 留言框開啟時，鍵盤全交給它（含方向鍵選角色）
+  if (!composerEl.classList.contains('hidden')) { handleComposerKey(ev); return; }
   if (anyModalOpen() || isTyping()) return;
 
   if (view === 'grid') {
     switch (ev.code) {
+      case 'KeyA': case 'ArrowLeft': ev.preventDefault(); moveGrid(-1); break;
+      case 'KeyD': case 'ArrowRight': ev.preventDefault(); moveGrid(1); break;
+      case 'KeyW': case 'ArrowUp': ev.preventDefault(); moveGrid(-GRID_COLS); break;
+      case 'KeyS': case 'ArrowDown': ev.preventDefault(); moveGrid(GRID_COLS); break;
+      case 'Space': case 'Enter': ev.preventDefault(); setView('single'); void selectIndex(gridIndex); break;
       case 'Tab': ev.preventDefault(); setView('single'); break;
-      case 'Enter': ev.preventDefault(); setView('single'); void selectIndex(gridIndex); break;
-      case 'ArrowLeft': ev.preventDefault(); moveGrid(-1); break;
-      case 'ArrowRight': ev.preventDefault(); moveGrid(1); break;
-      case 'ArrowUp': ev.preventDefault(); moveGrid(-GRID_COLS); break;
-      case 'ArrowDown': ev.preventDefault(); moveGrid(GRID_COLS); break;
     }
     return;
   }
