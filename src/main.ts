@@ -31,6 +31,10 @@ ws.on('ready', () => {
 ws.on('timeupdate', (t: number) => {
   statusEl.textContent = `${formatTime(t)} / ${formatTime(ws.getDuration())}`;
 });
+// 播完自動續播下一檔
+ws.on('finish', () => {
+  if (currentIndex < entries.length - 1) void selectIndex(currentIndex + 1);
+});
 
 function formatTime(s: number): string {
   if (!isFinite(s)) return '0:00';
@@ -100,9 +104,27 @@ async function selectIndex(i: number): Promise<void> {
   void ws.play();
 }
 
+// 相對目前位置快轉/倒退，並夾在 [0, 時長] 範圍內
+function seekBy(delta: number): void {
+  const dur = ws.getDuration();
+  if (!isFinite(dur) || dur === 0) return;
+  const t = Math.min(Math.max(0, ws.getCurrentTime() + delta), dur);
+  ws.setTime(t);
+}
+
 document.addEventListener('keydown', (ev) => {
-  if (ev.code === 'Space') {
-    ev.preventDefault();
-    void ws.playPause();
+  switch (ev.code) {
+    case 'Space':
+      ev.preventDefault();
+      void ws.playPause();
+      break;
+    case 'KeyA':
+      ev.preventDefault();
+      seekBy(-5);
+      break;
+    case 'KeyD':
+      ev.preventDefault();
+      seekBy(5);
+      break;
   }
 });
