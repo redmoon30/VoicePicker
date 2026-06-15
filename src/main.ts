@@ -109,6 +109,10 @@ function formatTimeMs(s: number): string {
 function uid(): string {
   return Math.random().toString(36).slice(2) + Date.now().toString(36);
 }
+// 主鍵盤與數字鍵盤的 Enter 都算
+function isEnter(ev: KeyboardEvent): boolean {
+  return ev.code === 'Enter' || ev.code === 'NumpadEnter';
+}
 function escapeHtml(s: string): string {
   return s.replace(/[&<>"']/g, (m) =>
     ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[m]!,
@@ -125,9 +129,9 @@ function focusedFileName(): string | null {
   return currentFileName();
 }
 function commentsForFile(name: string | null): Comment[] {
-  // 對應秒數的依時間排序在前，整體留言（time=null）排最後
+  // 整體留言（time=null）置頂，其餘依秒數遞增
   return name
-    ? comments.filter((c) => c.file === name).sort((a, b) => (a.time ?? Infinity) - (b.time ?? Infinity))
+    ? comments.filter((c) => c.file === name).sort((a, b) => (a.time ?? -Infinity) - (b.time ?? -Infinity))
     : [];
 }
 function countComments(file: string): number {
@@ -484,14 +488,15 @@ function handleComposerKey(ev: KeyboardEvent): void {
   if (ev.code === 'Escape') { ev.preventDefault(); closeComposer(); return; }
 
   if (composerFocus === 'text') {
-    if (ev.code === 'Enter' && !ev.shiftKey) { ev.preventDefault(); saveComposer(); return; }
+    if (isEnter(ev) && !ev.shiftKey) { ev.preventDefault(); saveComposer(); return; }
     if (ev.code === 'ArrowDown' || ev.code === 'Tab') { ev.preventDefault(); goToggle(); return; }
     return; // 其餘交給 textarea（打字、Shift+Enter 換行、文字內游標移動）
   }
 
+  if (isEnter(ev)) { ev.preventDefault(); saveComposer(); return; }
+
   if (composerFocus === 'toggle') {
     switch (ev.code) {
-      case 'Enter': ev.preventDefault(); saveComposer(); break;
       case 'Space': ev.preventDefault(); composerAttachTime = !composerAttachTime; drawComposer(); break;
       case 'ArrowUp': ev.preventDefault(); backToText(); break;
       case 'ArrowDown': case 'Tab': ev.preventDefault(); enterChips(); break;
@@ -502,7 +507,6 @@ function handleComposerKey(ev: KeyboardEvent): void {
   // 角色 chip 模式
   const idx = composerFocus;
   switch (ev.code) {
-    case 'Enter': ev.preventDefault(); saveComposer(); break;
     case 'Space': ev.preventDefault(); toggleChip(idx); break;
     case 'ArrowRight': { ev.preventDefault(); const t = navChip(idx, 'right'); if (typeof t === 'number') { composerFocus = t; drawComposer(); } break; }
     case 'ArrowLeft': { ev.preventDefault(); const t = navChip(idx, 'left'); if (typeof t === 'number') { composerFocus = t; drawComposer(); } break; }
@@ -676,25 +680,26 @@ document.addEventListener('keydown', (ev) => {
   if (anyModalOpen() || isTyping()) return;
 
   if (view === 'grid') {
+    if (isEnter(ev)) { ev.preventDefault(); setView('single'); void selectIndex(gridIndex); return; }
     switch (ev.code) {
       case 'KeyA': case 'ArrowLeft': ev.preventDefault(); moveGrid(-1); break;
       case 'KeyD': case 'ArrowRight': ev.preventDefault(); moveGrid(1); break;
       case 'KeyW': case 'ArrowUp': ev.preventDefault(); moveGrid(-GRID_COLS); break;
       case 'KeyS': case 'ArrowDown': ev.preventDefault(); moveGrid(GRID_COLS); break;
-      case 'Space': case 'Enter': ev.preventDefault(); setView('single'); void selectIndex(gridIndex); break;
+      case 'Space': ev.preventDefault(); setView('single'); void selectIndex(gridIndex); break;
       case 'Tab': ev.preventDefault(); setView('single'); break;
     }
     return;
   }
 
-  // 單檔模式
+  // 單檔模式（方向鍵與 WASD 等價）
   switch (ev.code) {
     case 'Space': ev.preventDefault(); void ws.playPause(); break;
-    case 'KeyA': ev.preventDefault(); seekBy(-5); break;
-    case 'KeyD': ev.preventDefault(); seekBy(5); break;
-    case 'KeyW': ev.preventDefault(); jumpMarker(-1); break;
-    case 'KeyS': ev.preventDefault(); jumpMarker(1); break;
-    case 'KeyC': ev.preventDefault(); startComment(); break;
+    case 'KeyA': case 'ArrowLeft': ev.preventDefault(); seekBy(-5); break;
+    case 'KeyD': case 'ArrowRight': ev.preventDefault(); seekBy(5); break;
+    case 'KeyW': case 'ArrowUp': ev.preventDefault(); jumpMarker(-1); break;
+    case 'KeyS': case 'ArrowDown': ev.preventDefault(); jumpMarker(1); break;
+    case 'KeyC': case 'KeyX': ev.preventDefault(); startComment(); break;
     case 'Tab': ev.preventDefault(); if (entries.length) setView('grid'); break;
   }
 });

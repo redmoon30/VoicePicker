@@ -20,7 +20,7 @@
         <div id="waveform"></div>
         <div id="status"></div>
         <p class="hint">
-          Space 播放/暫停 · A/D ±5秒 · W/S 跳留言點 · C 寫留言 · Tab 進網格
+          Space 播放/暫停 · A/D（或 ←→）±5秒 · W/S（或 ↑↓）跳留言點 · C／X 寫留言 · Tab 進網格
         </p>
       </main>
 
@@ -38,8 +38,11 @@
     <!-- 留言輸入 -->
     <div id="composer" class="modal hidden">
       <div class="modal-box">
-        <div class="modal-head">留言 <button type="button" id="composerToggle" class="tc-toggle"></button></div>
+        <div class="modal-head">留言</div>
         <textarea id="composerText" rows="3" placeholder="輸入留言…"></textarea>
+        <div class="composer-toggle-row">
+          <button type="button" id="composerToggle" class="tc-toggle"></button>
+        </div>
         <div class="picker-label">掛角色（可不選）</div>
         <div id="composerChars" class="char-picker"></div>
         <div class="picker-label">

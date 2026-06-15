@@ -153,17 +153,18 @@ button.ghost {
 .charchip:hover { filter: brightness(1.15); }
 .charchip.focused { outline: 2px solid var(--accent); outline-offset: 2px; }
 
+.composer-toggle-row { display: flex; }
 .tc-toggle {
-  font-size: 12px;
-  padding: 3px 11px;
+  font-size: 13px;
+  padding: 6px 14px;
   border-radius: 999px;
-  border: 1px solid var(--accent);
-  background: #161b25;
-  color: var(--text);
-  margin-left: 6px;
+  border: none;
+  background: #2563eb; /* 對應秒數＝藍 */
+  color: #fff;
+  font-weight: 500;
 }
-.tc-toggle.off { border-color: var(--line); color: var(--muted); }
-.tc-toggle.focused { outline: 2px solid var(--accent); outline-offset: 2px; }
+.tc-toggle.off { background: #ea580c; } /* 整體留言＝橘 */
+.tc-toggle.focused { outline: 2px solid #e6ebf2; outline-offset: 2px; }
 .ctime.general { color: var(--muted); cursor: default; }
 
 /* ---- 網格視圖 ---- */
