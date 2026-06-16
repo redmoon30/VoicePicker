@@ -11,9 +11,9 @@ import {
 
 const AUDIO_EXT = new Set(['wav', 'mp3', 'm4a', 'aac', 'ogg', 'flac', 'wma', 'opus']);
 const GRID_COLS = 4;
-const PREV_SKIP = 1.5; // 按 W：游標在 1.5s 內的留言點視為「已在此」，跳更前一個
+const PREV_SKIP = 1.5;
 const NEXT_SKIP = 0.25;
-const PROJECT_FILE = 'voicepicker.json'; // 寫進 NAS 資料夾，供同資料夾的人共享留言
+const PROJECT_FILE = 'voicepicker.json';
 
 interface AudioEntry {
   name: string;
@@ -22,11 +22,11 @@ interface AudioEntry {
 
 // ---- 狀態 ----
 let entries: AudioEntry[] = [];
-let currentIndex = -1; // 目前載入播放的檔
+let currentIndex = -1;
 let currentUrl: string | null = null;
 let view: ViewMode = 'single';
-let gridIndex = 0; // 網格中高亮的檔
-let projectDir: FileSystemDirectoryHandle | null = null; // 所選 NAS 資料夾
+let gridIndex = 0;
+let projectDir: FileSystemDirectoryHandle | null = null;
 let saveTimer: number | undefined;
 
 let author = loadAuthor();
@@ -34,16 +34,23 @@ let comments = loadComments();
 let characters = loadCharacters();
 
 let pendingTime = 0;
-let composerAttachTime = true; // 留言是否對應秒數（toggle）
-let composerChars: string[] = []; // 撰寫中留言掛的角色（複選）
-let composerFocus: 'text' | 'toggle' | number = 'text'; // 留言框焦點
+let composerAttachTime = true;
+let composerChars: string[] = [];
+let composerFocus: 'text' | 'toggle' | number = 'text';
 let editingCharId: string | null = null;
+let replyingId: string | null = null;
 let nameCallback: (() => void) | null = null;
+
+// 角色視圖
+let roleCards: Comment[] = []; // 角色視圖中卡片的扁平順序（鍵盤巡覽用）
+let roleFocusIndex = 0;
+let inlinePlayingId: string | null = null; // 角色視圖中就地播放的留言 id
 
 // ---- DOM ----
 const $ = <T extends HTMLElement>(id: string): T => document.getElementById(id) as T;
 const pickBtn = $<HTMLButtonElement>('pick');
 const editCharsBtn = $<HTMLButtonElement>('editChars');
+const roleViewBtn = $<HTMLButtonElement>('roleViewBtn');
 const fileListEl = $<HTMLUListElement>('filelist');
 const nowPlayingEl = $<HTMLHeadingElement>('nowplaying');
 const statusEl = $<HTMLDivElement>('status');
@@ -52,6 +59,8 @@ const appVerEl = $<HTMLSpanElement>('appVer');
 const sidebarEl = $<HTMLElement>('sidebar');
 const playerEl = $<HTMLElement>('player');
 const gridEl = $<HTMLDivElement>('grid');
+const roleviewEl = $<HTMLDivElement>('roleview');
+const commentsAsideEl = $<HTMLElement>('comments');
 const commentsHeadEl = $<HTMLHeadingElement>('commentsHead');
 const commentListEl = $<HTMLUListElement>('commentlist');
 
@@ -86,10 +95,11 @@ ws.on('ready', () => {
 ws.on('timeupdate', (t: number) => {
   statusEl.textContent = `${formatTimeMs(t)} / ${formatTimeMs(ws.getDuration())}`;
 });
-ws.on('play', () => { playBtn.textContent = '⏸ 暫停'; });
-ws.on('pause', () => { playBtn.textContent = '▶ 播放'; });
+ws.on('play', () => { playBtn.textContent = '⏸ 暫停'; if (view === 'role') updateRolePlayButtons(); });
+ws.on('pause', () => { playBtn.textContent = '▶ 播放'; if (view === 'role') updateRolePlayButtons(); });
 ws.on('finish', () => {
-  if (currentIndex < entries.length - 1) void selectIndex(currentIndex + 1);
+  if (view === 'single' && currentIndex < entries.length - 1) void selectIndex(currentIndex + 1);
+  else if (view === 'role') { inlinePlayingId = null; updateRolePlayButtons(); }
 });
 regions.on('region-clicked', (region, e) => {
   e.stopPropagation();
@@ -105,7 +115,6 @@ function formatTime(s: number): string {
   const sec = Math.floor(s % 60).toString().padStart(2, '0');
   return `${m}:${sec}`;
 }
-// 播放器狀態用：精準到 1/100 秒（M:SS.cc）
 function formatTimeMs(s: number): string {
   if (!isFinite(s)) return '0:00.00';
   const m = Math.floor(s / 60);
@@ -132,7 +141,6 @@ function escapeHtml(s: string): string {
 function currentFileName(): string | null {
   return currentIndex >= 0 && currentIndex < entries.length ? entries[currentIndex].name : null;
 }
-// 留言區「焦點檔」：單檔=載入中的檔；網格=高亮的檔
 function focusedFileName(): string | null {
   if (view === 'grid') {
     return gridIndex >= 0 && gridIndex < entries.length ? entries[gridIndex].name : null;
@@ -140,7 +148,6 @@ function focusedFileName(): string | null {
   return currentFileName();
 }
 function commentsForFile(name: string | null): Comment[] {
-  // 整體留言（time=null）置頂，其餘依秒數遞增
   return name
     ? comments.filter((c) => c.file === name).sort((a, b) => (a.time ?? -Infinity) - (b.time ?? -Infinity))
     : [];
@@ -152,9 +159,27 @@ function charColor(names: string[]): string {
   return (names.length ? colorByName(names[0], characters) : null) ?? '#3b82f6';
 }
 
+// 任何留言/回覆/角色變更後的統一刷新
+function afterChange(): void {
+  persist();
+  renderMarkers();
+  renderFileList();
+  renderComments();
+  if (view === 'role') renderRoleView();
+}
+// 僅重繪當前可見的留言視圖（用於開關編輯狀態，並把焦點還給回覆輸入框）
+function rerenderActive(): void {
+  renderComments();
+  if (view === 'role') renderRoleView();
+  if (replyingId) {
+    const container = view === 'role' ? roleviewEl : commentListEl;
+    (container.querySelector('.creply-input input') as HTMLInputElement | null)?.focus();
+  }
+}
+
 // ---- 持久化（localStorage 鏡像 + NAS 資料夾 json）----
 function persist(): void {
-  saveComments(comments); // 離線備援
+  saveComments(comments);
   if (!projectDir) return;
   window.clearTimeout(saveTimer);
   saveTimer = window.setTimeout(() => void writeProject(), 300);
@@ -167,7 +192,7 @@ async function writeProject(): Promise<void> {
     await w.write(JSON.stringify({ version: 1, updated: new Date().toISOString(), comments }, null, 2));
     await w.close();
   } catch {
-    // 權限不足/唯讀 → 略過（localStorage 仍有備份）
+    // 權限不足/唯讀 → 略過
   }
 }
 async function loadProjectFromDir(): Promise<void> {
@@ -181,7 +206,7 @@ async function loadProjectFromDir(): Promise<void> {
       saveComments(comments);
     }
   } catch {
-    // 沒檔案或讀不到 → 沿用現有資料，首次存檔時自動建立
+    // 沒檔案 → 沿用現有資料
   }
 }
 
@@ -210,7 +235,7 @@ pickBtn.addEventListener('click', async () => {
   }
   entries.sort((a, b) => a.name.localeCompare(b.name, 'zh-Hant', { numeric: true }));
 
-  await loadProjectFromDir(); // 讀資料夾內的共享留言
+  await loadProjectFromDir();
   renderFileList();
   if (entries.length > 0) {
     gridIndex = 0;
@@ -263,7 +288,7 @@ async function selectIndex(i: number): Promise<void> {
   void ws.play();
 }
 
-// ---- 波型標記（永遠是載入中的檔）----
+// ---- 波型標記 ----
 function renderMarkers(): void {
   regions.clearRegions();
   const timed = commentsForFile(currentFileName()).filter((c) => c.time !== null);
@@ -278,11 +303,194 @@ function renderMarkers(): void {
   });
 }
 
-// ---- 留言列（顯示「焦點檔」，不受 Tab 影響）----
+// ---- 共用：建一張留言卡 ----
+function buildCommentCard(
+  c: Comment,
+  opts: { role?: boolean; ridx?: number; focused?: boolean } = {},
+): HTMLDivElement {
+  const card = document.createElement('div');
+  card.className = 'citem' + (opts.role ? ' role' : '') + (opts.focused ? ' rolefocus' : '');
+  if (opts.role && opts.ridx !== undefined) card.dataset.ridx = String(opts.ridx);
+
+  const row = document.createElement('div');
+  row.className = 'crow';
+
+  if (opts.role) {
+    const play = document.createElement('button');
+    play.className = 'cplay';
+    play.dataset.cid = c.id;
+    play.textContent = inlinePlayingId === c.id && ws.isPlaying() ? '⏸' : '▶';
+    play.addEventListener('click', (e) => { e.stopPropagation(); toggleInline(c); });
+    row.appendChild(play);
+  }
+
+  const time = document.createElement('span');
+  if (c.time === null) {
+    time.className = 'ctime general';
+    time.textContent = '整體';
+  } else {
+    time.className = 'ctime';
+    time.textContent = formatTime(c.time);
+    time.addEventListener('click', (e) => { e.stopPropagation(); void openSingleFromComment(c); });
+  }
+  row.appendChild(time);
+
+  if (opts.role) {
+    const f = document.createElement('span');
+    f.className = 'cfile';
+    f.textContent = c.file;
+    row.appendChild(f);
+  }
+
+  const auth = document.createElement('span');
+  auth.className = 'cauthor';
+  auth.textContent = c.author;
+  row.appendChild(auth);
+
+  const del = document.createElement('button');
+  del.className = 'cdel';
+  del.textContent = '×';
+  del.title = '刪除';
+  del.addEventListener('click', (e) => {
+    e.stopPropagation();
+    comments = comments.filter((x) => x.id !== c.id);
+    afterChange();
+  });
+  row.appendChild(del);
+  card.appendChild(row);
+
+  const text = document.createElement('div');
+  text.className = 'ctext';
+  text.textContent = c.text;
+  text.addEventListener('dblclick', (e) => {
+    e.stopPropagation();
+    text.contentEditable = 'true';
+    text.focus();
+  });
+  text.addEventListener('keydown', (e) => {
+    if (e.isComposing) return;
+    if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); text.blur(); }
+  });
+  text.addEventListener('blur', () => {
+    text.contentEditable = 'false';
+    const v = (text.innerText ?? '').trim();
+    if (v) { c.text = v; afterChange(); }
+    else { text.textContent = c.text; }
+  });
+  card.appendChild(text);
+
+  const tagRow = document.createElement('div');
+  tagRow.className = 'ctag-row';
+  buildTagRow(c, tagRow);
+  card.appendChild(tagRow);
+
+  // 回覆（討論串）
+  if (c.replies.length) {
+    const rep = document.createElement('div');
+    rep.className = 'creplies';
+    c.replies.forEach((r) => {
+      const rr = document.createElement('div');
+      rr.className = 'creply';
+      const ra = document.createElement('span');
+      ra.className = 'crauthor';
+      ra.textContent = r.author + '：';
+      const rt = document.createElement('span');
+      rt.textContent = r.text;
+      const rd = document.createElement('button');
+      rd.className = 'crdel';
+      rd.textContent = '×';
+      rd.addEventListener('click', (e) => {
+        e.stopPropagation();
+        c.replies = c.replies.filter((x) => x.id !== r.id);
+        afterChange();
+      });
+      rr.append(ra, rt, rd);
+      rep.appendChild(rr);
+    });
+    card.appendChild(rep);
+  }
+
+  const ri = document.createElement('div');
+  ri.className = 'creply-input';
+  if (replyingId === c.id) {
+    const inp = document.createElement('input');
+    inp.type = 'text';
+    inp.placeholder = '回覆…（Enter 送出 / Esc 取消）';
+    inp.addEventListener('keydown', (e) => {
+      e.stopPropagation();
+      if (e.isComposing) return;
+      if (e.key === 'Enter') { e.preventDefault(); submitReply(c, inp.value); }
+      else if (e.key === 'Escape') { e.preventDefault(); replyingId = null; rerenderActive(); }
+    });
+    const sb = document.createElement('button');
+    sb.textContent = '送出';
+    sb.addEventListener('click', (e) => { e.stopPropagation(); submitReply(c, inp.value); });
+    ri.append(inp, sb);
+  } else {
+    const tg = document.createElement('button');
+    tg.className = 'creply-toggle';
+    tg.textContent = '＋ 回覆';
+    tg.addEventListener('click', (e) => {
+      e.stopPropagation();
+      if (!author) { openNameModal(() => { replyingId = c.id; rerenderActive(); }); return; }
+      replyingId = c.id;
+      rerenderActive();
+    });
+    ri.appendChild(tg);
+  }
+  card.appendChild(ri);
+
+  // 角色視圖：點卡片其他位置 → 進單檔
+  if (opts.role) {
+    card.addEventListener('click', (e) => {
+      const t = e.target as HTMLElement;
+      if (t.closest('button, input, textarea, .ctag, .charchip')) return;
+      if (t.classList.contains('ctime')) return;
+      if (t.isContentEditable) return;
+      void openSingleFromComment(c);
+    });
+  }
+
+  return card;
+}
+
+function buildTagRow(c: Comment, tagRow: HTMLElement): void {
+  if (editingCharId === c.id) {
+    const picker = document.createElement('div');
+    picker.className = 'char-picker';
+    renderCharChips(picker, c.character, (name) => {
+      toggleName(c.character, name);
+      afterChange();
+    });
+    const done = document.createElement('button');
+    done.type = 'button';
+    done.className = 'charchip done';
+    done.textContent = '完成';
+    done.addEventListener('click', (e) => { e.stopPropagation(); editingCharId = null; rerenderActive(); });
+    picker.appendChild(done);
+    tagRow.appendChild(picker);
+  } else if (c.character.length > 0) {
+    c.character.forEach((nm) => {
+      const tag = document.createElement('span');
+      tag.className = 'ctag';
+      tag.style.background = colorByName(nm, characters) ?? '#3b82f6';
+      tag.textContent = nm;
+      tag.addEventListener('click', (e) => { e.stopPropagation(); editingCharId = c.id; rerenderActive(); });
+      tagRow.appendChild(tag);
+    });
+  } else {
+    const tag = document.createElement('span');
+    tag.className = 'ctag empty';
+    tag.textContent = '＋ 角色';
+    tag.addEventListener('click', (e) => { e.stopPropagation(); editingCharId = c.id; rerenderActive(); });
+    tagRow.appendChild(tag);
+  }
+}
+
+// ---- 留言列（右側，焦點檔）----
 function renderComments(): void {
   const fname = focusedFileName();
   commentsHeadEl.textContent = fname ? `留言 · ${fname}` : '留言';
-
   commentListEl.innerHTML = '';
   const list = commentsForFile(fname);
   if (list.length === 0) {
@@ -293,108 +501,135 @@ function renderComments(): void {
     commentListEl.appendChild(empty);
     return;
   }
-
-  list.forEach((c) => {
-    const li = document.createElement('li');
-    li.className = 'citem';
-
-    const row = document.createElement('div');
-    row.className = 'crow';
-    const time = document.createElement('span');
-    if (c.time === null) {
-      time.className = 'ctime general';
-      time.textContent = '整體';
-    } else {
-      time.className = 'ctime';
-      time.textContent = formatTime(c.time);
-      time.addEventListener('click', () => void openCommentAt(c));
-    }
-    const auth = document.createElement('span');
-    auth.className = 'cauthor';
-    auth.textContent = c.author;
-    const del = document.createElement('button');
-    del.className = 'cdel';
-    del.textContent = '×';
-    del.title = '刪除';
-    del.addEventListener('click', () => {
-      comments = comments.filter((x) => x.id !== c.id);
-      persist();
-      renderMarkers();
-      renderComments();
-      renderFileList();
-    });
-    row.append(time, auth, del);
-
-    const text = document.createElement('div');
-    text.className = 'ctext';
-    text.textContent = c.text;
-    text.addEventListener('dblclick', () => {
-      text.contentEditable = 'true';
-      text.focus();
-    });
-    text.addEventListener('keydown', (e) => {
-      if (e.isComposing) return; // 注音選字中不攔截
-      if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); text.blur(); } // Shift+Enter 換行
-    });
-    text.addEventListener('blur', () => {
-      text.contentEditable = 'false';
-      const v = (text.innerText ?? '').trim(); // innerText 保留換行
-      if (v) { c.text = v; persist(); }
-      else { text.textContent = c.text; }
-    });
-
-    const tagRow = document.createElement('div');
-    tagRow.className = 'ctag-row';
-    if (editingCharId === c.id) {
-      const picker = document.createElement('div');
-      picker.className = 'char-picker';
-      renderCharChips(picker, c.character, (name) => {
-        toggleName(c.character, name);
-        persist();
-        renderMarkers();
-        renderComments();
-      });
-      const done = document.createElement('button');
-      done.type = 'button';
-      done.className = 'charchip done';
-      done.textContent = '完成';
-      done.addEventListener('click', () => { editingCharId = null; renderComments(); });
-      picker.appendChild(done);
-      tagRow.appendChild(picker);
-    } else if (c.character.length > 0) {
-      c.character.forEach((nm) => {
-        const tag = document.createElement('span');
-        tag.className = 'ctag';
-        tag.style.background = colorByName(nm, characters) ?? '#3b82f6';
-        tag.textContent = nm;
-        tag.addEventListener('click', () => { editingCharId = c.id; renderComments(); });
-        tagRow.appendChild(tag);
-      });
-    } else {
-      const tag = document.createElement('span');
-      tag.className = 'ctag empty';
-      tag.textContent = '＋ 角色';
-      tag.addEventListener('click', () => { editingCharId = c.id; renderComments(); });
-      tagRow.appendChild(tag);
-    }
-
-    li.append(row, text, tagRow);
-    commentListEl.appendChild(li);
-  });
+  list.forEach((c) => commentListEl.appendChild(buildCommentCard(c)));
 }
 
-// 點留言秒數：必要時切到該檔再跳播（網格中也能用）
-async function openCommentAt(c: Comment): Promise<void> {
-  if (c.time === null) return;
+// ---- 角色視圖 ----
+function commentsForCharacter(name: string): Comment[] {
+  return comments
+    .filter((c) => c.character.includes(name))
+    .sort((a, b) => a.file.localeCompare(b.file, 'zh-Hant', { numeric: true }) || (a.time ?? -Infinity) - (b.time ?? -Infinity));
+}
+
+function renderRoleView(): void {
+  roleviewEl.innerHTML = '';
+  roleCards = [];
+
+  const head = document.createElement('div');
+  head.className = 'role-head';
+  const h2 = document.createElement('h2');
+  h2.textContent = '角色視圖';
+  const back = document.createElement('button');
+  back.className = 'ghost';
+  back.textContent = '返回單檔';
+  back.addEventListener('click', () => setView('single'));
+  const hint = document.createElement('span');
+  hint.className = 'role-hint';
+  hint.textContent = '↑↓ 移動 · 空白鍵 就地播放 · Enter 進單檔 · Tab/Esc 返回';
+  head.append(h2, back, hint);
+  roleviewEl.appendChild(head);
+
+  // 統計列（含 0 則的角色，方便掌握全局）
+  const stats = document.createElement('div');
+  stats.className = 'role-stats';
+  characters.forEach((ch) => {
+    const n = comments.filter((c) => c.character.includes(ch.name)).length;
+    const s = document.createElement('span');
+    s.className = 'role-stat' + (n === 0 ? ' zero' : '');
+    s.style.background = ROLE_COLORS[ch.role];
+    s.textContent = `${ch.name} ${n}`;
+    stats.appendChild(s);
+  });
+  const noneCount = comments.filter((c) => c.character.length === 0).length;
+  if (noneCount > 0) {
+    const s = document.createElement('span');
+    s.className = 'role-stat';
+    s.style.background = '#64748b';
+    s.textContent = `未指定 ${noneCount}`;
+    stats.appendChild(s);
+  }
+  roleviewEl.appendChild(stats);
+
+  // 各角色分組
+  const renderGroup = (label: string, color: string, list: Comment[]): void => {
+    if (list.length === 0) return;
+    const group = document.createElement('div');
+    group.className = 'role-group';
+    const gh = document.createElement('div');
+    gh.className = 'role-group-head';
+    const chip = document.createElement('span');
+    chip.className = 'role-group-chip';
+    chip.style.background = color;
+    chip.textContent = `${label}（${list.length}）`;
+    gh.appendChild(chip);
+    group.appendChild(gh);
+    const cards = document.createElement('div');
+    cards.className = 'role-cards';
+    list.forEach((c) => {
+      const ridx = roleCards.length;
+      cards.appendChild(buildCommentCard(c, { role: true, ridx, focused: ridx === roleFocusIndex }));
+      roleCards.push(c);
+    });
+    group.appendChild(cards);
+    roleviewEl.appendChild(group);
+  };
+
+  characters.forEach((ch) => renderGroup(ch.name, ROLE_COLORS[ch.role], commentsForCharacter(ch.name)));
+  renderGroup('未指定角色', '#64748b', comments.filter((c) => c.character.length === 0)
+    .sort((a, b) => a.file.localeCompare(b.file, 'zh-Hant', { numeric: true })));
+
+  if (roleCards.length === 0) {
+    const empty = document.createElement('div');
+    empty.style.color = 'var(--muted)';
+    empty.textContent = '尚無留言。';
+    roleviewEl.appendChild(empty);
+  }
+  if (roleFocusIndex >= roleCards.length) roleFocusIndex = Math.max(0, roleCards.length - 1);
+}
+
+function updateRolePlayButtons(): void {
+  roleviewEl.querySelectorAll<HTMLElement>('.cplay').forEach((btn) => {
+    btn.textContent = inlinePlayingId === btn.dataset.cid && ws.isPlaying() ? '⏸' : '▶';
+  });
+}
+function updateRoleFocusHighlight(): void {
+  roleviewEl.querySelectorAll<HTMLElement>('.citem').forEach((el) => {
+    const on = el.dataset.ridx === String(roleFocusIndex);
+    el.classList.toggle('rolefocus', on);
+    if (on) el.scrollIntoView({ block: 'nearest' });
+  });
+}
+function moveRoleFocus(d: number): void {
+  if (roleCards.length === 0) return;
+  roleFocusIndex = Math.min(Math.max(0, roleFocusIndex + d), roleCards.length - 1);
+  updateRoleFocusHighlight();
+}
+
+// 就地播放：載入該檔音訊並跳至秒數，但留在角色視圖
+async function playInline(c: Comment): Promise<void> {
   const idx = entries.findIndex((e) => e.name === c.file);
   if (idx < 0) return;
-  if (view === 'grid') setView('single');
   if (idx !== currentIndex) await selectIndex(idx);
-  ws.setTime(c.time);
+  ws.setTime(c.time ?? 0);
+  void ws.play();
+  inlinePlayingId = c.id;
+  updateRolePlayButtons();
+}
+function toggleInline(c: Comment): void {
+  if (inlinePlayingId === c.id && ws.isPlaying()) { ws.pause(); updateRolePlayButtons(); return; }
+  void playInline(c);
+}
+// 進單檔模式並跳至該留言
+async function openSingleFromComment(c: Comment): Promise<void> {
+  const idx = entries.findIndex((e) => e.name === c.file);
+  if (idx < 0) return;
+  if (view !== 'single') setView('single');
+  if (idx !== currentIndex) await selectIndex(idx);
+  if (c.time !== null) ws.setTime(c.time);
   void ws.play();
 }
 
-// 角色 chips（共用）。selected 為已選名單（複選），focusedIndex 用於鍵盤巡覽。
+// 角色 chips（複選）
 function renderCharChips(
   container: HTMLElement,
   selected: string[],
@@ -412,9 +647,22 @@ function renderCharChips(
       chip.style.background = ROLE_COLORS[ch.role];
       chip.style.color = '#fff';
     }
-    chip.addEventListener('click', () => onToggle(ch.name));
+    chip.addEventListener('click', (e) => { e.stopPropagation(); onToggle(ch.name); });
     container.appendChild(chip);
   });
+}
+
+// ---- 回覆 ----
+function submitReply(c: Comment, raw: string): void {
+  const text = raw.trim();
+  if (!text) { replyingId = null; rerenderActive(); return; }
+  const doIt = (): void => {
+    c.replies.push({ id: uid(), author, text, created: Date.now() });
+    replyingId = null;
+    afterChange();
+  };
+  if (!author) openNameModal(doIt);
+  else doIt();
 }
 
 // ---- 寫留言 ----
@@ -472,24 +720,13 @@ function saveComposer(): void {
     text,
     author,
     character: [...composerChars],
+    replies: [],
   });
-  persist();
-  renderMarkers();
-  renderComments();
-  renderFileList();
+  afterChange();
 }
 
-// 焦點移動：文字 → 時間軸開關 → 角色 chips（垂直三段）
-function goToggle(): void {
-  composerFocus = 'toggle';
-  composerText.blur();
-  drawComposer();
-}
-function backToText(): void {
-  composerFocus = 'text';
-  drawComposer();
-  composerText.focus();
-}
+function goToggle(): void { composerFocus = 'toggle'; composerText.blur(); drawComposer(); }
+function backToText(): void { composerFocus = 'text'; drawComposer(); composerText.focus(); }
 function enterChips(): void {
   if (characters.length === 0) return;
   const sel = composerChars.length ? characters.findIndex((c) => c.name === composerChars[0]) : -1;
@@ -501,8 +738,6 @@ function toggleChip(idx: number): void {
   toggleName(composerChars, characters[idx].name);
   drawComposer();
 }
-
-// 依實際座標在 chips 間做 2D 方向移動（flex-wrap 每排數量不固定）
 function navChip(cur: number, dir: 'up' | 'down' | 'left' | 'right'): number | 'toggle' {
   const els = Array.from(composerCharsEl.children) as HTMLElement[];
   if (els.length === 0) return cur;
@@ -511,19 +746,17 @@ function navChip(cur: number, dir: 'up' | 'down' | 'left' | 'right'): number | '
   const cx = c.left + c.width / 2;
   const cy = c.top + c.height / 2;
   const rowTol = c.height / 2;
-
   if (dir === 'left' || dir === 'right') {
     let best = -1, bestDist = Infinity;
     r.forEach((rect, i) => {
       if (i === cur) return;
-      if (Math.abs(rect.top + rect.height / 2 - cy) > rowTol) return; // 非同排
+      if (Math.abs(rect.top + rect.height / 2 - cy) > rowTol) return;
       const rx = rect.left + rect.width / 2;
       if (dir === 'left' && rx < cx && cx - rx < bestDist) { bestDist = cx - rx; best = i; }
       if (dir === 'right' && rx > cx && rx - cx < bestDist) { bestDist = rx - cx; best = i; }
     });
     return best >= 0 ? best : cur;
   }
-
   let best = -1, bestScore = Infinity;
   r.forEach((rect, i) => {
     if (i === cur) return;
@@ -533,22 +766,18 @@ function navChip(cur: number, dir: 'up' | 'down' | 'left' | 'right'): number | '
     const score = Math.abs(ry - cy) * 1000 + Math.abs(rect.left + rect.width / 2 - cx);
     if (score < bestScore) { bestScore = score; best = i; }
   });
-  if (dir === 'up' && best < 0) return 'toggle'; // 沒有上一排 → 回時間軸開關
+  if (dir === 'up' && best < 0) return 'toggle';
   return best >= 0 ? best : cur;
 }
-
 function handleComposerKey(ev: KeyboardEvent): void {
-  if (ev.isComposing) return; // 注音/IME 選字中，完全不攔截（修選字誤觸發儲存/切角色）
+  if (ev.isComposing) return;
   if (ev.code === 'Escape') { ev.preventDefault(); closeComposer(); return; }
-
   if (composerFocus === 'text') {
     if (isEnter(ev) && !ev.shiftKey) { ev.preventDefault(); saveComposer(); return; }
     if (ev.code === 'ArrowDown' || ev.code === 'Tab') { ev.preventDefault(); goToggle(); return; }
-    return; // 其餘交給 textarea（打字、Shift+Enter 換行、文字內游標移動）
+    return;
   }
-
   if (isEnter(ev)) { ev.preventDefault(); saveComposer(); return; }
-
   if (composerFocus === 'toggle') {
     switch (ev.code) {
       case 'Space': ev.preventDefault(); composerAttachTime = !composerAttachTime; drawComposer(); break;
@@ -557,8 +786,6 @@ function handleComposerKey(ev: KeyboardEvent): void {
     }
     return;
   }
-
-  // 角色 chip 模式
   const idx = composerFocus;
   switch (ev.code) {
     case 'Space': ev.preventDefault(); toggleChip(idx); break;
@@ -569,10 +796,7 @@ function handleComposerKey(ev: KeyboardEvent): void {
     case 'Tab': ev.preventDefault(); backToText(); break;
   }
 }
-composerToggle.addEventListener('click', () => {
-  composerAttachTime = !composerAttachTime;
-  drawComposer();
-});
+composerToggle.addEventListener('click', () => { composerAttachTime = !composerAttachTime; drawComposer(); });
 
 // ---- 名字 ----
 function openNameModal(cb: (() => void) | null): void {
@@ -645,6 +869,7 @@ closeCharBtn.addEventListener('click', () => {
   charModalEl.classList.add('hidden');
   renderMarkers();
   renderComments();
+  if (view === 'role') renderRoleView();
 });
 
 // ---- 播放控制 ----
@@ -674,20 +899,18 @@ function jumpMarker(dir: number): void {
   ws.setTime(target);
 }
 
-// ---- 網格視圖 ----
+// ---- 視圖切換 ----
 function setView(v: ViewMode): void {
   view = v;
-  if (v === 'grid') {
-    ws.pause();
-    renderGrid();
-    sidebarEl.classList.add('hidden');
-    playerEl.classList.add('hidden');
-    gridEl.classList.remove('hidden');
-  } else {
-    gridEl.classList.add('hidden');
-    sidebarEl.classList.remove('hidden');
-    playerEl.classList.remove('hidden');
-  }
+  const single = v === 'single', grid = v === 'grid', role = v === 'role';
+  if (grid || role) ws.pause();
+  sidebarEl.classList.toggle('hidden', !single);
+  playerEl.classList.toggle('hidden', !single);
+  gridEl.classList.toggle('hidden', !grid);
+  roleviewEl.classList.toggle('hidden', !role);
+  commentsAsideEl.classList.toggle('hidden', role); // 角色視圖自己就是留言介面，隱藏右欄
+  if (grid) renderGrid();
+  if (role) { roleFocusIndex = 0; renderRoleView(); }
   renderComments();
 }
 function renderGrid(): void {
@@ -729,17 +952,32 @@ function anyModalOpen(): boolean {
 }
 
 document.addEventListener('keydown', (ev) => {
-  // 留言框開啟時，鍵盤全交給它
   if (!composerEl.classList.contains('hidden')) { handleComposerKey(ev); return; }
   if (ev.isComposing) return;
-  // 側欄角色選取中，Esc 取消回上一步
   if (editingCharId !== null && ev.code === 'Escape') {
     ev.preventDefault();
     editingCharId = null;
-    renderComments();
+    rerenderActive();
+    return;
+  }
+  if (replyingId !== null && ev.code === 'Escape') {
+    ev.preventDefault();
+    replyingId = null;
+    rerenderActive();
     return;
   }
   if (anyModalOpen() || isTyping()) return;
+
+  if (view === 'role') {
+    if (ev.code === 'Tab' || ev.code === 'Escape') { ev.preventDefault(); setView('single'); return; }
+    switch (ev.code) {
+      case 'ArrowUp': case 'KeyW': ev.preventDefault(); moveRoleFocus(-1); break;
+      case 'ArrowDown': case 'KeyS': ev.preventDefault(); moveRoleFocus(1); break;
+      case 'Space': ev.preventDefault(); if (roleCards[roleFocusIndex]) toggleInline(roleCards[roleFocusIndex]); break;
+      case 'Enter': case 'NumpadEnter': ev.preventDefault(); if (roleCards[roleFocusIndex]) void openSingleFromComment(roleCards[roleFocusIndex]); break;
+    }
+    return;
+  }
 
   if (view === 'grid') {
     if (isEnter(ev)) { ev.preventDefault(); setView('single'); void selectIndex(gridIndex); return; }
@@ -754,7 +992,7 @@ document.addEventListener('keydown', (ev) => {
     return;
   }
 
-  // 單檔模式（方向鍵與 WASD 等價）
+  // 單檔模式
   switch (ev.code) {
     case 'Space': ev.preventDefault(); void ws.playPause(); break;
     case 'KeyA': case 'ArrowLeft': ev.preventDefault(); seekBy(-5); break;
@@ -766,6 +1004,9 @@ document.addEventListener('keydown', (ev) => {
   }
 });
 
+// ---- 角色視圖按鈕 ----
+roleViewBtn.addEventListener('click', () => { roleViewBtn.blur(); setView('role'); });
+
 // ---- 啟動 ----
 appVerEl.textContent = 'v' + __APP_VERSION__;
-if (!author) openNameModal(null); // 首次開啟先問名字
+if (!author) openNameModal(null);

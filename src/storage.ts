@@ -3,7 +3,7 @@
 // 留言/角色/名字存在本機瀏覽器，避免測試時 refresh 全失。
 
 import { type Character, DEFAULT_CHARACTERS } from './characters';
-import { type Comment } from './types';
+import { type Comment, type Reply } from './types';
 
 const K_AUTHOR = 'voicepicker.author';
 const K_COMMENTS = 'voicepicker.comments';
@@ -17,14 +17,25 @@ export function saveAuthor(name: string): void {
   localStorage.setItem(K_AUTHOR, name);
 }
 
-// 把任意來源（舊格式 / NAS json）的留言正規化。相容舊的 character: string|null。
+function normalizeReply(r: unknown): Reply {
+  const o = (r ?? {}) as Record<string, unknown>;
+  return {
+    id: typeof o.id === 'string' ? o.id : Math.random().toString(36).slice(2),
+    author: typeof o.author === 'string' ? o.author : '',
+    text: typeof o.text === 'string' ? o.text : '',
+    created: typeof o.created === 'number' ? o.created : Date.now(),
+  };
+}
+
+// 把任意來源（舊格式 / NAS json）的留言正規化。相容舊的 character: string|null、無 replies。
 export function normalizeComment(c: unknown): Comment {
   const o = (c ?? {}) as Record<string, unknown>;
-  let ch = o.character;
+  const ch = o.character;
   let character: string[];
   if (Array.isArray(ch)) character = ch.filter((x): x is string => typeof x === 'string');
   else if (typeof ch === 'string') character = [ch];
   else character = [];
+  const replies = Array.isArray(o.replies) ? (o.replies as unknown[]).map(normalizeReply) : [];
   return {
     id: typeof o.id === 'string' ? o.id : Math.random().toString(36).slice(2),
     file: typeof o.file === 'string' ? o.file : '',
@@ -32,6 +43,7 @@ export function normalizeComment(c: unknown): Comment {
     text: typeof o.text === 'string' ? o.text : '',
     author: typeof o.author === 'string' ? o.author : '',
     character,
+    replies,
   };
 }
 
