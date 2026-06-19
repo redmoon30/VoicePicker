@@ -1,0 +1,98 @@
+<!doctype html>
+<html lang="zh-Hant">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>VoicePicker</title>
+  </head>
+  <body>
+    <div id="app">
+      <aside id="sidebar">
+        <div class="app-title">VoicePicker <span id="appVer" class="ver"></span></div>
+        <ul id="filelist"></ul>
+        <div class="sidebar-foot">
+          <button id="pick">選擇資料夾</button>
+          <div class="foot-row">
+            <button id="exportBtn" class="ghost">匯出備份</button>
+            <button id="importBtn" class="ghost">匯入備份</button>
+          </div>
+          <div class="foot-row" style="margin-top:2px">
+            <button id="reportBtn" class="ghost">匯出報告 PDF</button>
+          </div>
+          <input type="file" id="importFile" accept="application/json,.json" class="hidden" />
+        </div>
+      </aside>
+
+      <main id="player">
+        <h2 id="nowplaying">尚未選擇檔案</h2>
+        <div id="waveform"></div>
+        <div id="controls">
+          <button id="playBtn" class="play-btn">▶ 播放</button>
+        </div>
+        <div id="status"></div>
+        <p class="hint">
+          Space 播放/暫停 · A/D（或 ←→）±5秒 · W/S（或 ↑↓）跳留言點 · C／X 寫留言 · Shift+1~5 評分 · Tab 進網格
+        </p>
+      </main>
+
+      <div id="grid" class="hidden"></div>
+      <div id="roleview" class="hidden"></div>
+
+      <aside id="comments">
+        <h3 id="commentsHead">留言</h3>
+        <ul id="commentlist"></ul>
+        <div class="panel-foot">
+          <button id="roleViewBtn" class="ghost">角色 Dashboard</button>
+          <button id="editChars" class="ghost">編輯角色名單</button>
+        </div>
+      </aside>
+    </div>
+
+    <!-- 留言輸入 -->
+    <div id="composer" class="modal hidden">
+      <div class="modal-box">
+        <div class="modal-head">留言</div>
+        <textarea id="composerText" rows="3" placeholder="輸入留言…"></textarea>
+        <div class="composer-toggle-row">
+          <button type="button" id="composerToggle" class="tc-toggle"></button>
+        </div>
+        <div class="picker-label">掛角色（可不選）</div>
+        <div id="composerChars" class="char-picker"></div>
+        <div class="picker-label">評分（可選）</div>
+        <div id="composerRating" class="composer-rating"></div>
+        <div class="picker-label">
+          Enter 儲存 · Shift+Enter 換行 · ↑/↓ 在 文字／時間軸／角色 間移動 · 空白鍵 切換或選取 · Esc 取消
+        </div>
+      </div>
+    </div>
+
+    <!-- 詢問名字 -->
+    <div id="nameModal" class="modal hidden">
+      <div class="modal-box">
+        <div class="modal-head">請輸入你的名字</div>
+        <div class="picker-label">留言會標記來源，方便傳閱時辨識</div>
+        <input id="nameInput" type="text" placeholder="你的名字（Enter 確認）" />
+      </div>
+    </div>
+
+    <!-- 編輯角色名單 -->
+    <div id="charModal" class="modal hidden">
+      <div class="modal-box">
+        <div class="modal-head">編輯角色名單</div>
+        <ul id="charEditList"></ul>
+        <div class="char-add">
+          <input id="newCharName" type="text" placeholder="新角色名" />
+          <select id="newCharRole">
+            <option value="lead">主角</option>
+            <option value="supporting">配角</option>
+            <option value="mascot">吉祥物</option>
+          </select>
+          <button id="addCharBtn">新增</button>
+        </div>
+        <button id="closeCharBtn" class="primary">完成</button>
+      </div>
+    </div>
+
+    <script type="module" src="/src/main.ts"></script>
+  </body>
+</html>
