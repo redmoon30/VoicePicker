@@ -15,6 +15,7 @@ export interface Comment {
   author: string; // 留言者名字
   character: string[]; // 掛的角色名（可複選，空陣列＝未掛）
   replies: Reply[]; // 討論串
+  rating: number; // 0 = 未評分，1–5 = 分數
 }
 
 export type ViewMode = 'single' | 'grid' | 'role';

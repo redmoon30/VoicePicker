@@ -44,6 +44,7 @@ export function normalizeComment(c: unknown): Comment {
     author: typeof o.author === 'string' ? o.author : '',
     character,
     replies,
+    rating: typeof o.rating === 'number' ? Math.min(5, Math.max(0, Math.round(o.rating))) : 0,
   };
 }
 
