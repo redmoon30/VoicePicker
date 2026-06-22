@@ -1274,7 +1274,7 @@ ${sectionsHtml || '<p style="color:#9ca3af">尚無留言</p>'}
 ratingsBtn.addEventListener('click', () => { ratingsBtn.blur(); exportCommentsPDF(); });
 
 // ---- 協作輪詢實作 ----
-const POLL_INTERVAL = 30_000;
+const POLL_INTERVAL = 10_000;
 
 // 只加入本地沒有的新 ID，不覆蓋本地已有的留言（保護進行中的編輯）
 function pollMerge(incoming: unknown[]): number {
