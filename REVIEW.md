@@ -102,3 +102,46 @@ Chrome 在某些安全設定下會 block popup（無互動觸發）。這是 int
 - `hermes/v0.7` — Hermes Agent（DeepSeek）提交的版本，已評審
 
 v0.7 功能方向正確，評分 + Dashboard 是核心需求，但 Bug 1 和 Bug 2 阻礙正式 merge。修完後可在 master 上直接繼續迭代。
+
+---
+
+## v0.8.0 評審｜2026-06-22
+
+**開發者：** Claude Code（Sonnet 4.6）
+**分支：** `master`
+
+### 新功能與修正清單
+
+#### UX 修正
+
+| 項目 | 說明 |
+|------|------|
+| 焦點跳轉 Bug 修正 | 多標籤留言（同時掛泰泰＋吵鬧菇）在角色 Dashboard 點播放，焦點框跳到第一個群組的問題。根因：`roleCards.indexOf(c)` 對同一 Comment 物件找到第一次出現位置。修法：播放鈕與 Space 鍵傳入 `ridx`（卡片在 roleCards 中的確切索引），不再用 indexOf。 |
+| Dashboard 按鈕位置 | 從右欄底部 `.panel-foot` 移到頂部，與「留言」標題並排；移除 `ghost` class 改為藍色填充，更醒目 |
+| 未指定標籤位置 | 原本在「配角」快捷列下方另起一行，改為附在配角那行末尾 |
+| 留言排序 | 角色 Dashboard 各群組改為分數高到低 → 同分依音檔名 → timecode |
+| 角色重命名 | 編輯名單中角色名稱雙擊 → input → Enter/blur 確認，同步更新所有 comments 的 character 陣列 |
+| 回覆功能隱藏 | `.creplies` / `.creply-input` CSS `display:none`，功能保留、UI 隱藏 |
+
+#### 功能改版
+
+| 項目 | 說明 |
+|------|------|
+| PDF 評語報告 | 原「評分摘要」改為「評語報告」：依角色 Dashboard 分組，每則留言顯示 timecode、音檔名、評語、評分星星、留言者 |
+| 唯讀分享版匯出 | 新增「匯出分享版」按鈕，生成自包含 HTML。同事用 Chrome/Edge 開啟，選擇 NAS 同一音檔資料夾即可試聽；無法刪除、編輯、打分數 |
+
+#### 架構
+
+| 項目 | 說明 |
+|------|------|
+| `viewer-template.html` | 新增唯讀 viewer 的 HTML 範本，由 Vite `?raw` import 嵌入打包 |
+| `generateShareHTML()` | 將 comments + characters + roleColors 序列化嵌入 viewer，safe-embed 防 XSS |
+| GitHub Pages 部署 | 設定 `vite.config.ts` conditional base + `.github/workflows/deploy.yml` 自動部署，URL：`https://redmoon30.github.io/VoicePicker/` |
+
+### 下一輪迭代優先順序
+
+| 優先 | 項目 | 說明 |
+|------|------|------|
+| P0 | 輪詢協作（v0.8 進行中）| 每 30 秒讀 voicepicker.json 並 merge，讓多人可非同步協作 |
+| P1 | 恢復回覆 UI | 待輪詢穩定後，css `display:none` 改回來 |
+| P2 | 評分統計視圖 | Dashboard 加整體評分分布 |

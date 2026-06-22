@@ -8,6 +8,7 @@ import {
   loadComments, saveComments, normalizeComment,
   loadCharacters, saveCharacters,
 } from './storage';
+import viewerTemplate from './viewer-template.html?raw';
 
 const AUDIO_EXT = new Set(['wav', 'mp3', 'm4a', 'aac', 'ogg', 'flac', 'wma', 'opus']);
 const GRID_COLS = 4;
@@ -86,6 +87,10 @@ const newCharRole = $<HTMLSelectElement>('newCharRole');
 const addCharBtn = $<HTMLButtonElement>('addCharBtn');
 const closeCharBtn = $<HTMLButtonElement>('closeCharBtn');
 const ratingsBtn = $<HTMLButtonElement>('ratingsBtn');
+const shareBtn = $<HTMLButtonElement>('shareBtn');
+const shareModalEl = $<HTMLDivElement>('shareModal');
+const shareCancelBtn = $<HTMLButtonElement>('shareCancelBtn');
+const shareConfirmBtn = $<HTMLButtonElement>('shareConfirmBtn');
 
 // ---- WaveSurfer ----
 const ws = WaveSurfer.create({
@@ -398,7 +403,7 @@ function buildCommentCard(
     play.className = 'cplay';
     play.dataset.cid = c.id;
     play.textContent = inlinePlayingId === c.id && ws.isPlaying() ? '⏸' : '▶';
-    play.addEventListener('click', (e) => { e.stopPropagation(); toggleInline(c); });
+    play.addEventListener('click', (e) => { e.stopPropagation(); toggleInline(c, opts.ridx); });
     inner.append(main, play);
     card.appendChild(inner);
     contentEl = main;
@@ -593,7 +598,7 @@ function renderComments(): void {
 function commentsForCharacter(name: string): Comment[] {
   return comments
     .filter((c) => c.character.includes(name))
-    .sort((a, b) => a.file.localeCompare(b.file, 'zh-Hant', { numeric: true }) || (a.time ?? -Infinity) - (b.time ?? -Infinity));
+    .sort((a, b) => (b.rating - a.rating) || a.file.localeCompare(b.file, 'zh-Hant', { numeric: true }) || (a.time ?? -Infinity) - (b.time ?? -Infinity));
 }
 
 function renderRoleView(): void {
@@ -617,13 +622,16 @@ function renderRoleView(): void {
 
   // ── 角色快捷列（依分類分行，可點擊跳轉）──
   const ROLE_ORDER = ['lead', 'mascot', 'supporting'] as const;
+  const noneCount = comments.filter((c) => c.character.length === 0).length;
   const statsWrap = document.createElement('div');
   statsWrap.className = 'role-stats-wrap';
+  let supportingRowEl: HTMLDivElement | null = null;
   ROLE_ORDER.forEach((role) => {
     const charsOfRole = characters.filter((ch) => ch.role === role);
     if (charsOfRole.length === 0) return;
     const rowEl = document.createElement('div');
     rowEl.className = 'role-stats-row';
+    if (role === 'supporting') supportingRowEl = rowEl;
     const typeLabel = document.createElement('span');
     typeLabel.className = 'role-stats-type';
     typeLabel.textContent = ROLE_LABELS[role];
@@ -643,10 +651,8 @@ function renderRoleView(): void {
     });
     statsWrap.appendChild(rowEl);
   });
-  const noneCount = comments.filter((c) => c.character.length === 0).length;
+  // 未指定附在配角同行末尾；若無配角群組則單獨成行
   if (noneCount > 0) {
-    const rowEl = document.createElement('div');
-    rowEl.className = 'role-stats-row';
     const s = document.createElement('button');
     s.className = 'role-stat';
     s.style.background = '#64748b';
@@ -655,8 +661,14 @@ function renderRoleView(): void {
       roleviewEl.querySelector<HTMLElement>('[data-char="__none__"]')
         ?.scrollIntoView({ behavior: 'smooth', block: 'start' });
     });
-    rowEl.appendChild(s);
-    statsWrap.appendChild(rowEl);
+    if (supportingRowEl) {
+      (supportingRowEl as HTMLDivElement).appendChild(s);
+    } else {
+      const rowEl = document.createElement('div');
+      rowEl.className = 'role-stats-row';
+      rowEl.appendChild(s);
+      statsWrap.appendChild(rowEl);
+    }
   }
   roleviewEl.appendChild(statsWrap);
 
@@ -686,7 +698,7 @@ function renderRoleView(): void {
 
   characters.forEach((ch) => renderGroup(ch.name, ROLE_COLORS[ch.role], commentsForCharacter(ch.name)));
   renderGroup('__none__', '#64748b', comments.filter((c) => c.character.length === 0)
-    .sort((a, b) => a.file.localeCompare(b.file, 'zh-Hant', { numeric: true })));
+    .sort((a, b) => (b.rating - a.rating) || a.file.localeCompare(b.file, 'zh-Hant', { numeric: true })));
 
   if (roleCards.length === 0) {
     const empty = document.createElement('div');
@@ -716,21 +728,21 @@ function moveRoleFocus(d: number): void {
 }
 
 // 就地播放：載入該檔音訊並跳至秒數，但留在角色視圖
-async function playInline(c: Comment): Promise<void> {
+async function playInline(c: Comment, ridx?: number): Promise<void> {
   const idx = entries.findIndex((e) => e.name === c.file);
   if (idx < 0) return;
   if (idx !== currentIndex) await selectIndex(idx);
   ws.setTime(c.time ?? 0);
   void ws.play();
   inlinePlayingId = c.id;
-  // 同步焦點索引，讓播放後鍵盤上下鍵從此卡接續
-  const cardIdx = roleCards.indexOf(c);
+  // 用傳入的 ridx 避免同一留言出現在多個角色群組時焦點跳到第一個群組
+  const cardIdx = ridx !== undefined ? ridx : roleCards.indexOf(c);
   if (cardIdx >= 0) { roleFocusIndex = cardIdx; updateRoleFocusHighlight(); }
   updateRolePlayButtons();
 }
-function toggleInline(c: Comment): void {
+function toggleInline(c: Comment, ridx?: number): void {
   if (inlinePlayingId === c.id && ws.isPlaying()) { ws.pause(); updateRolePlayButtons(); return; }
-  void playInline(c);
+  void playInline(c, ridx);
 }
 // 進單檔模式並跳至該留言
 async function openSingleFromComment(c: Comment): Promise<void> {
@@ -978,6 +990,37 @@ function renderCharEditList(): void {
     dot.style.background = ROLE_COLORS[ch.role];
     const name = document.createElement('span');
     name.textContent = ch.name;
+    name.title = '雙擊重命名';
+    name.style.cursor = 'pointer';
+    name.addEventListener('dblclick', () => {
+      const inp = document.createElement('input');
+      inp.type = 'text';
+      inp.value = ch.name;
+      inp.style.cssText = 'font-size:13px;width:120px;padding:2px 6px';
+      li.replaceChild(inp, name);
+      inp.focus();
+      inp.select();
+      const commit = () => {
+        const newName = inp.value.trim();
+        if (newName && newName !== ch.name) {
+          const oldName = ch.name;
+          ch.name = newName;
+          comments.forEach((c) => {
+            const k = c.character.indexOf(oldName);
+            if (k >= 0) c.character[k] = newName;
+          });
+          saveCharacters(characters);
+          persist();
+        }
+        renderCharEditList();
+      };
+      inp.addEventListener('keydown', (e) => {
+        e.stopPropagation();
+        if (e.key === 'Enter') { e.preventDefault(); commit(); }
+        else if (e.key === 'Escape') { e.preventDefault(); renderCharEditList(); }
+      });
+      inp.addEventListener('blur', commit);
+    });
     const role = document.createElement('span');
     role.className = 'role';
     role.textContent = ROLE_LABELS[ch.role];
@@ -1121,7 +1164,7 @@ document.addEventListener('keydown', (ev) => {
     switch (ev.code) {
       case 'ArrowUp': case 'KeyW': ev.preventDefault(); moveRoleFocus(-1); break;
       case 'ArrowDown': case 'KeyS': ev.preventDefault(); moveRoleFocus(1); break;
-      case 'Space': ev.preventDefault(); if (roleCards[roleFocusIndex]) toggleInline(roleCards[roleFocusIndex]); break;
+      case 'Space': ev.preventDefault(); if (roleCards[roleFocusIndex]) toggleInline(roleCards[roleFocusIndex], roleFocusIndex); break;
       case 'Enter': case 'NumpadEnter': ev.preventDefault(); if (roleCards[roleFocusIndex]) void openSingleFromComment(roleCards[roleFocusIndex]); break;
     }
     return;
@@ -1152,83 +1195,109 @@ document.addEventListener('keydown', (ev) => {
   }
 });
 
-// ---- 評分報告 PDF ----
-function exportRatingsPDF(): void {
-  const byFile = new Map<string, { sum: number; count: number; dist: number[] }>();
-  comments.forEach((c) => {
-    if (!byFile.has(c.file)) byFile.set(c.file, { sum: 0, count: 0, dist: [0, 0, 0, 0, 0, 0] });
-    if (c.rating > 0) {
-      const b = byFile.get(c.file)!;
-      b.sum += c.rating;
-      b.count++;
-      b.dist[c.rating]++;
-    }
-  });
+// ---- 評語報告 PDF（依角色 Dashboard 版面，按分數高到低）----
+function exportCommentsPDF(): void {
+  let sectionsHtml = '';
 
-  const totalRated = comments.filter((c) => c.rating > 0).length;
-  const totalSum = comments.reduce((s, c) => s + (c.rating > 0 ? c.rating : 0), 0);
-  const overallAvg = totalRated > 0 ? (totalSum / totalRated).toFixed(1) : '—';
+  const sortByRating = (a: Comment, b: Comment): number =>
+    (b.rating - a.rating) || a.file.localeCompare(b.file, 'zh-Hant', { numeric: true }) || (a.time ?? -Infinity) - (b.time ?? -Infinity);
 
-  const fileRows = [...byFile.entries()]
-    .filter(([, b]) => b.count > 0)
-    .sort(([, a], [, b]) => b.sum / b.count - a.sum / a.count)
-    .map(([name, b]) => {
-      const avg = (b.sum / b.count).toFixed(1);
-      const filled = Math.round(b.sum / b.count);
-      const stars = '★'.repeat(filled) + '☆'.repeat(5 - filled);
+  const buildSection = (charName: string, color: string, list: Comment[]): void => {
+    if (list.length === 0) return;
+    const rows = list.map((c) => {
+      const stars = c.rating > 0 ? '★'.repeat(c.rating) + '☆'.repeat(5 - c.rating) : '';
+      const time = c.time !== null ? formatTime(c.time) : '整體';
       return `<tr>
-        <td>${escapeHtml(name)}</td>
-        <td style="text-align:center;font-size:18px;color:#d97706">${stars}</td>
-        <td style="text-align:center;font-weight:600">${avg} / 5</td>
-        <td style="text-align:center;color:#6b7280">${b.count}</td>
+        <td class="tc">${escapeHtml(time)}</td>
+        <td class="fn">${escapeHtml(c.file)}</td>
+        <td class="cm">${escapeHtml(c.text)}</td>
+        <td class="sr">${stars}</td>
+        <td class="au">${escapeHtml(c.author)}</td>
       </tr>`;
     }).join('');
+    sectionsHtml += `<div class="section">
+  <div class="slabel" style="background:${color}">${escapeHtml(charName === '__none__' ? '未指定' : charName)}</div>
+  <table><thead><tr>
+    <th class="tc">時間</th><th class="fn">音檔</th><th class="cm">評語</th><th class="sr">評分</th><th class="au">留言者</th>
+  </tr></thead><tbody>${rows}</tbody></table>
+</div>`;
+  };
+
+  characters.forEach((ch) =>
+    buildSection(ch.name, ROLE_COLORS[ch.role],
+      comments.filter((c) => c.character.includes(ch.name)).sort(sortByRating)));
+  buildSection('__none__', '#64748b',
+    comments.filter((c) => c.character.length === 0).sort(sortByRating));
 
   const html = `<!DOCTYPE html>
 <html lang="zh-Hant">
 <head>
 <meta charset="UTF-8">
-<title>VoicePicker 評分報告</title>
+<title>VoicePicker 評語報告</title>
 <style>
-  body{font-family:system-ui,"Microsoft JhengHei",sans-serif;padding:40px;color:#111;max-width:800px;margin:0 auto}
+  body{font-family:system-ui,"Microsoft JhengHei",sans-serif;padding:40px;color:#111;max-width:1000px;margin:0 auto}
   h1{font-size:22px;margin-bottom:4px}
   .sub{color:#6b7280;font-size:13px;margin-bottom:28px}
-  .summary{display:flex;gap:36px;background:#f3f4f6;border-radius:8px;padding:16px 24px;margin-bottom:28px}
-  .kv .k{font-size:12px;color:#6b7280}
-  .kv .v{font-size:28px;font-weight:700}
-  table{width:100%;border-collapse:collapse}
-  th{text-align:left;font-size:12px;color:#6b7280;padding:6px 10px;border-bottom:2px solid #e5e7eb}
-  td{padding:10px;border-bottom:1px solid #f3f4f6;font-size:14px;word-break:break-all}
+  .section{margin-bottom:32px}
+  .slabel{display:inline-block;padding:3px 14px;border-radius:999px;color:#fff;font-size:13px;font-weight:600;margin-bottom:8px}
+  table{width:100%;border-collapse:collapse;font-size:13px}
+  th{text-align:left;font-size:11px;color:#6b7280;padding:5px 8px;border-bottom:2px solid #e5e7eb}
+  td{padding:8px;border-bottom:1px solid #f3f4f6;vertical-align:top}
+  td.tc{white-space:nowrap;color:#3b82f6;font-variant-numeric:tabular-nums;width:54px}
+  td.fn{color:#6b7280;width:200px;word-break:break-all;font-size:11px}
+  td.cm{white-space:pre-wrap;line-height:1.5}
+  td.sr{color:#d97706;white-space:nowrap;width:68px;font-size:12px}
+  td.au{color:#9ca3af;white-space:nowrap;width:60px;font-size:11px}
   tr:last-child td{border-bottom:none}
   @media print{body{padding:20px}}
 </style>
 </head>
 <body>
-<h1>VoicePicker — 評分報告</h1>
-<div class="sub">產出時間：${new Date().toLocaleString('zh-Hant')}</div>
-<div class="summary">
-  <div class="kv"><div class="k">整體平均</div><div class="v">${overallAvg}</div></div>
-  <div class="kv"><div class="k">已評分留言</div><div class="v">${totalRated}</div></div>
-  <div class="kv"><div class="k">音檔數</div><div class="v">${byFile.size}</div></div>
-</div>
-<table>
-<thead><tr>
-  <th>音檔</th>
-  <th style="text-align:center">評分</th>
-  <th style="text-align:center">平均分</th>
-  <th style="text-align:center">已評留言數</th>
-</tr></thead>
-<tbody>${fileRows || '<tr><td colspan="4" style="color:#9ca3af;text-align:center;padding:20px">尚無評分資料</td></tr>'}</tbody>
-</table>
+<h1>VoicePicker — 評語報告</h1>
+<div class="sub">產出時間：${new Date().toLocaleString('zh-Hant')} · 共 ${comments.length} 則留言</div>
+${sectionsHtml || '<p style="color:#9ca3af">尚無留言</p>'}
 </body></html>`;
 
-  const w = window.open('', '_blank', 'width=800,height=700');
+  const w = window.open('', '_blank', 'width=900,height=800');
   if (!w) { alert('請允許開啟新分頁（檢查彈出視窗封鎖設定）'); return; }
   w.document.write(html);
   w.document.close();
   setTimeout(() => w.print(), 600);
 }
-ratingsBtn.addEventListener('click', () => { ratingsBtn.blur(); exportRatingsPDF(); });
+ratingsBtn.addEventListener('click', () => { ratingsBtn.blur(); exportCommentsPDF(); });
+
+// ---- 唯讀分享版匯出 ----
+function generateShareHTML(): void {
+  const safeEmbed = (v: unknown): string =>
+    JSON.stringify(v)
+      .replace(/</g, '\\u003c')
+      .replace(/>/g, '\\u003e')
+      .replace(/&/g, '\\u0026');
+
+  const html = viewerTemplate
+    .replace('{{DATA_JSON}}', () => safeEmbed({ comments, characters, roleColors: ROLE_COLORS }));
+
+  const blob = new Blob([html], { type: 'text/html;charset=utf-8' });
+  const blobUrl = URL.createObjectURL(blob);
+  const d = new Date();
+  const p = (n: number): string => String(n).padStart(2, '0');
+  const stamp = `${d.getFullYear()}${p(d.getMonth() + 1)}${p(d.getDate())}-${p(d.getHours())}${p(d.getMinutes())}`;
+  const a = document.createElement('a');
+  a.href = blobUrl;
+  a.download = `voicepicker-share-${stamp}.html`;
+  a.click();
+  URL.revokeObjectURL(blobUrl);
+}
+
+shareBtn.addEventListener('click', () => {
+  shareBtn.blur();
+  shareModalEl.classList.remove('hidden');
+});
+shareCancelBtn.addEventListener('click', () => shareModalEl.classList.add('hidden'));
+shareConfirmBtn.addEventListener('click', () => {
+  shareModalEl.classList.add('hidden');
+  generateShareHTML();
+});
 
 // ---- 角色視圖按鈕 ----
 roleViewBtn.addEventListener('click', () => { roleViewBtn.blur(); setView('role'); });

@@ -1,0 +1,442 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>VoicePicker 試聽版</title>
+<style>
+:root {
+  --bg: #1e2430; --panel: #262e3d; --line: #38445a;
+  --text: #e6ebf2; --muted: #8a97ad; --accent: #3b82f6; --time: #60a5fa;
+  font-family: system-ui,"Microsoft JhengHei",sans-serif;
+}
+* { box-sizing: border-box; }
+body { margin: 0; background: var(--bg); color: var(--text); }
+.hidden { display: none !important; }
+
+/* ── 選資料夾畫面 ── */
+#pick-screen {
+  min-height: 100vh;
+  display: flex; align-items: center; justify-content: center;
+}
+.pick-box {
+  background: var(--panel); border: 1px solid var(--line);
+  border-radius: 12px; padding: 40px 48px;
+  display: flex; flex-direction: column; align-items: center; gap: 16px;
+  max-width: 420px; text-align: center;
+}
+.pick-logo { font-size: 20px; font-weight: 700; }
+.badge-ro {
+  font-size: 11px; font-weight: 500; padding: 2px 8px;
+  background: #374151; border-radius: 999px; color: var(--muted);
+  vertical-align: middle; margin-left: 4px;
+}
+.pick-desc { font-size: 14px; color: var(--muted); line-height: 1.6; margin: 0; }
+#pickBtn {
+  padding: 11px 28px; background: var(--accent); color: #fff;
+  border: none; border-radius: 8px; font-size: 15px; font-weight: 600;
+  cursor: pointer; margin-top: 6px;
+}
+#pickBtn:hover { filter: brightness(1.1); }
+.pick-sub { font-size: 12px; color: var(--muted); margin: 0; }
+#pick-err { font-size: 13px; color: #f87171; min-height: 18px; }
+
+/* ── 頂部播放列 ── */
+#player-bar {
+  position: fixed; top: 0; left: 0; right: 0; z-index: 100;
+  background: var(--panel); border-bottom: 1px solid var(--line);
+  height: 52px; padding: 0 18px;
+  display: flex; align-items: center; gap: 12px;
+}
+#bar-logo { font-size: 13px; font-weight: 700; white-space: nowrap; }
+#bar-file {
+  font-size: 12px; color: var(--muted); white-space: nowrap;
+  overflow: hidden; text-overflow: ellipsis; max-width: 220px;
+}
+#bar-seek { flex: 1; accent-color: var(--accent); cursor: pointer; min-width: 60px; }
+#bar-time { font-size: 12px; color: var(--muted); white-space: nowrap; font-variant-numeric: tabular-nums; min-width: 88px; }
+#bar-vol { width: 72px; accent-color: var(--accent); }
+#bar-err { font-size: 11px; color: #f87171; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 240px; }
+
+/* ── 主內容 ── */
+#main { padding: 68px 24px 40px; max-width: 1100px; margin: 0 auto; }
+.view-title { display: flex; align-items: center; gap: 10px; margin-bottom: 16px; }
+.view-title h2 { margin: 0; font-size: 18px; }
+
+/* 角色快捷列 */
+.role-stats-wrap { display: flex; flex-direction: column; gap: 7px; margin-bottom: 20px; }
+.role-stats-row { display: flex; align-items: center; flex-wrap: wrap; gap: 6px; }
+.role-stats-type { font-size: 11px; color: var(--muted); white-space: nowrap; flex-shrink: 0; }
+.role-stat {
+  font-size: 12px; padding: 3px 10px; border-radius: 999px;
+  color: #fff; border: none; cursor: pointer;
+}
+.role-stat:hover { filter: brightness(1.15); }
+.role-stat.zero { opacity: 0.35; }
+
+/* 角色群組 */
+.role-group { display: flex; margin-bottom: 14px; border-radius: 8px; overflow: hidden; border: 1px solid var(--line); }
+.role-group-label {
+  width: 68px; flex-shrink: 0;
+  display: flex; align-items: center; justify-content: center;
+  font-size: 13px; font-weight: 600; color: #fff;
+  padding: 12px 6px; word-break: break-all; text-align: center; line-height: 1.4;
+}
+.role-group-cards-wrap { flex: 1; min-width: 0; padding: 8px; display: flex; flex-direction: column; gap: 6px; }
+
+/* 留言卡 */
+.citem { border: 1px solid var(--line); border-radius: 6px; padding: 8px 10px; }
+.citem.playing { border-color: var(--accent); }
+.card-inner { display: flex; align-items: center; gap: 10px; }
+.card-main { flex: 1; min-width: 0; }
+.crow { display: flex; align-items: center; gap: 8px; }
+.ctime { color: var(--time); font-variant-numeric: tabular-nums; font-size: 13px; white-space: nowrap; }
+.cfile { font-size: 11px; color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 200px; }
+.cauthor { color: var(--muted); font-size: 11px; margin-left: auto; white-space: nowrap; }
+.c-rating { display: flex; margin-top: 4px; }
+.c-star { color: var(--line); font-size: 14px; padding: 0 1px; }
+.c-star.filled { color: #f59e0b; }
+.ctext { font-size: 13px; margin-top: 5px; white-space: pre-wrap; line-height: 1.5; }
+.ctag-row { margin-top: 6px; display: flex; flex-wrap: wrap; gap: 5px; }
+.ctag { display: inline-block; font-size: 11px; padding: 2px 9px; border-radius: 999px; color: #fff; }
+
+/* 播放鈕 */
+.cplay {
+  flex-shrink: 0; width: 46px; height: 46px;
+  border-radius: 50%; border: 2px solid var(--accent);
+  color: var(--accent); background: transparent; font-size: 17px;
+  cursor: pointer; display: flex; align-items: center; justify-content: center; padding: 0;
+}
+.cplay:hover { background: var(--accent); color: #fff; filter: none; }
+.cplay.active { background: var(--accent); color: #fff; }
+</style>
+</head>
+<body>
+
+<!-- 選資料夾畫面 -->
+<div id="pick-screen">
+  <div class="pick-box">
+    <div class="pick-logo">VoicePicker <span class="badge-ro">試聽版</span></div>
+    <p class="pick-desc">選擇 NAS 上對應的音檔資料夾，即可在角色 Dashboard 中試聽所有評語。<br>此版本僅供試聽，無法修改留言。</p>
+    <button id="pickBtn">選擇音檔資料夾</button>
+    <p class="pick-sub">需要 Chrome 或 Edge · 選擇後不會上傳任何檔案</p>
+    <div id="pick-err"></div>
+  </div>
+</div>
+
+<!-- 主介面（選資料夾後顯示）-->
+<div id="player-bar" class="hidden">
+  <span id="bar-logo">VoicePicker <span class="badge-ro">試聽版</span></span>
+  <span id="bar-file">—</span>
+  <input id="bar-seek" type="range" min="0" max="100" step="0.1" value="0">
+  <span id="bar-time">0:00 / 0:00</span>
+  <input id="bar-vol" type="range" min="0" max="1" step="0.01" value="0.8" title="音量">
+  <span id="bar-err"></span>
+</div>
+<div id="main" class="hidden">
+  <div class="view-title">
+    <h2>角色 Dashboard</h2>
+  </div>
+  <div id="roleview"></div>
+</div>
+
+<audio id="audio" preload="none"></audio>
+
+<script>
+const RAW = {{DATA_JSON}};
+const { comments, characters, roleColors } = RAW;
+
+// ── DOM ──
+const pickScreen  = document.getElementById('pick-screen');
+const pickBtn     = document.getElementById('pickBtn');
+const pickErrEl   = document.getElementById('pick-err');
+const playerBar   = document.getElementById('player-bar');
+const mainEl      = document.getElementById('main');
+const audio       = document.getElementById('audio');
+const barFile     = document.getElementById('bar-file');
+const barSeek     = document.getElementById('bar-seek');
+const barTime     = document.getElementById('bar-time');
+const barVol      = document.getElementById('bar-vol');
+const barErrEl    = document.getElementById('bar-err');
+const roleviewEl  = document.getElementById('roleview');
+
+const AUDIO_EXT = new Set(['wav','mp3','m4a','aac','ogg','flac','wma','opus']);
+let fileHandles = new Map(); // filename → FileSystemFileHandle
+let blobUrls    = new Map(); // filename → blob URL (快取)
+let loadedFile  = null;
+let activeCard  = null;
+let activeId    = null;
+
+audio.volume = 0.8;
+
+// ── 選資料夾 ──
+pickBtn.addEventListener('click', async () => {
+  const picker = window.showDirectoryPicker;
+  if (!picker) {
+    pickErrEl.textContent = '此瀏覽器不支援資料夾選取，請改用 Chrome 或 Edge。';
+    return;
+  }
+  try {
+    const dir = await window.showDirectoryPicker({ mode: 'read' });
+    for await (const [name, handle] of dir.entries()) {
+      if (handle.kind !== 'file') continue;
+      const ext = name.split('.').pop().toLowerCase();
+      if (AUDIO_EXT.has(ext)) fileHandles.set(name, handle);
+    }
+    pickScreen.classList.add('hidden');
+    playerBar.classList.remove('hidden');
+    mainEl.classList.remove('hidden');
+    renderRoleView();
+  } catch (e) {
+    if (e && e.name !== 'AbortError')
+      pickErrEl.textContent = '無法開啟資料夾：' + (e.message || e);
+  }
+});
+
+// ── 音檔 URL（透過 File System Access API 建 blob URL）──
+async function getAudioUrl(filename) {
+  if (blobUrls.has(filename)) return blobUrls.get(filename);
+  const handle = fileHandles.get(filename);
+  if (!handle) return null;
+  const file = await handle.getFile();
+  const url  = URL.createObjectURL(file);
+  blobUrls.set(filename, url);
+  return url;
+}
+
+// ── 播放器事件 ──
+audio.addEventListener('timeupdate', () => {
+  if (!isFinite(audio.duration) || audio.duration === 0) return;
+  barSeek.value = (audio.currentTime / audio.duration) * 100;
+  barTime.textContent = ft(audio.currentTime) + ' / ' + ft(audio.duration);
+});
+audio.addEventListener('loadedmetadata', () => {
+  barTime.textContent = '0:00 / ' + ft(audio.duration);
+  barSeek.value = 0;
+});
+audio.addEventListener('ended', deactivate);
+audio.addEventListener('error', () => {
+  barErrEl.textContent = '⚠ 無法載入 ' + (loadedFile || '音檔');
+  deactivate();
+});
+
+barSeek.addEventListener('input', () => {
+  if (isFinite(audio.duration) && audio.duration > 0)
+    audio.currentTime = (parseFloat(barSeek.value) / 100) * audio.duration;
+});
+barVol.addEventListener('input', () => { audio.volume = parseFloat(barVol.value); });
+
+function ft(s) {
+  if (!isFinite(s) || s < 0) return '0:00';
+  return Math.floor(s / 60) + ':' + String(Math.floor(s % 60)).padStart(2, '0');
+}
+
+function deactivate() {
+  if (!activeCard) return;
+  const btn = activeCard.querySelector('.cplay');
+  if (btn) { btn.textContent = '▶'; btn.classList.remove('active'); }
+  activeCard.classList.remove('playing');
+  activeCard = null;
+  activeId   = null;
+}
+
+async function togglePlay(c, card) {
+  // 同一張卡正在播 → 暫停
+  if (activeId === c.id && !audio.paused) {
+    audio.pause();
+    card.querySelector('.cplay').textContent = '▶';
+    card.querySelector('.cplay').classList.remove('active');
+    return;
+  }
+  if (activeCard && activeCard !== card) deactivate();
+  barErrEl.textContent = '';
+
+  if (!fileHandles.has(c.file)) {
+    barErrEl.textContent = '⚠ 找不到音檔：' + c.file + '（資料夾是否選對？）';
+    return;
+  }
+
+  if (loadedFile !== c.file) {
+    const url = await getAudioUrl(c.file);
+    if (!url) { barErrEl.textContent = '⚠ 無法讀取：' + c.file; return; }
+    audio.src = url;
+    loadedFile = c.file;
+    barFile.textContent = c.file;
+    await new Promise((res, rej) => {
+      audio.addEventListener('loadedmetadata', res, { once: true });
+      audio.addEventListener('error', rej, { once: true });
+      audio.load();
+    }).catch(() => null);
+    if (audio.error) return;
+  }
+
+  audio.currentTime = (c.time !== null && c.time !== undefined) ? c.time : 0;
+  activeCard = card;
+  activeId   = c.id;
+  card.querySelector('.cplay').textContent = '⏸';
+  card.querySelector('.cplay').classList.add('active');
+  card.classList.add('playing');
+  await audio.play().catch(() => {});
+}
+
+// ── 角色顏色 ──
+function colorByName(name) {
+  const ch = characters.find(c => c.name === name);
+  return (ch && roleColors[ch.role]) ? roleColors[ch.role] : '#3b82f6';
+}
+
+// ── 排序 ──
+function sortByRating(list) {
+  return [...list].sort((a, b) =>
+    ((b.rating || 0) - (a.rating || 0)) ||
+    String(a.file).localeCompare(String(b.file), 'zh-Hant', { numeric: true }) ||
+    ((a.time ?? -Infinity) - (b.time ?? -Infinity)));
+}
+
+// ── 建留言卡（唯讀）──
+function buildCard(c) {
+  const card  = document.createElement('div');
+  card.className = 'citem';
+  const inner = document.createElement('div');
+  inner.className = 'card-inner';
+  const main  = document.createElement('div');
+  main.className = 'card-main';
+
+  const row   = document.createElement('div');
+  row.className = 'crow';
+  const timeEl = document.createElement('span');
+  timeEl.className = 'ctime';
+  timeEl.textContent = (c.time !== null && c.time !== undefined) ? ft(c.time) : '整體';
+  const fileEl = document.createElement('span');
+  fileEl.className = 'cfile';
+  fileEl.title = c.file;
+  fileEl.textContent = c.file;
+  const authEl = document.createElement('span');
+  authEl.className = 'cauthor';
+  authEl.textContent = c.author;
+  row.append(timeEl, fileEl, authEl);
+  main.appendChild(row);
+
+  if (c.rating > 0) {
+    const rEl = document.createElement('div');
+    rEl.className = 'c-rating';
+    for (let i = 1; i <= 5; i++) {
+      const s = document.createElement('span');
+      s.className = 'c-star' + (i <= c.rating ? ' filled' : '');
+      s.textContent = '★';
+      rEl.appendChild(s);
+    }
+    main.appendChild(rEl);
+  }
+
+  const textEl = document.createElement('div');
+  textEl.className = 'ctext';
+  textEl.textContent = c.text;
+  main.appendChild(textEl);
+
+  if (c.character && c.character.length > 0) {
+    const tagRow = document.createElement('div');
+    tagRow.className = 'ctag-row';
+    c.character.forEach(nm => {
+      const tag = document.createElement('span');
+      tag.className = 'ctag';
+      tag.style.background = colorByName(nm);
+      tag.textContent = nm;
+      tagRow.appendChild(tag);
+    });
+    main.appendChild(tagRow);
+  }
+
+  const play = document.createElement('button');
+  play.className = 'cplay';
+  play.textContent = '▶';
+  play.addEventListener('click', e => { e.stopPropagation(); togglePlay(c, card).catch(() => {}); });
+
+  inner.append(main, play);
+  card.appendChild(inner);
+  return card;
+}
+
+// ── 角色 Dashboard 渲染 ──
+function renderRoleView() {
+  roleviewEl.innerHTML = '';
+  const ROLE_LABELS = { lead: '主角', supporting: '配角', mascot: '吉祥物' };
+  const ROLE_ORDER  = ['lead', 'mascot', 'supporting'];
+  const noneList    = comments.filter(c => !c.character || c.character.length === 0);
+
+  const statsWrap = document.createElement('div');
+  statsWrap.className = 'role-stats-wrap';
+  let supportingRow = null;
+
+  ROLE_ORDER.forEach(role => {
+    const charsOfRole = characters.filter(ch => ch.role === role);
+    if (!charsOfRole.length) return;
+    const rowEl = document.createElement('div');
+    rowEl.className = 'role-stats-row';
+    if (role === 'supporting') supportingRow = rowEl;
+
+    const typeLabel = document.createElement('span');
+    typeLabel.className = 'role-stats-type';
+    typeLabel.textContent = ROLE_LABELS[role] || role;
+    typeLabel.style.color = roleColors[role] || '#8a97ad';
+    rowEl.appendChild(typeLabel);
+
+    charsOfRole.forEach(ch => {
+      const n = comments.filter(c => c.character && c.character.includes(ch.name)).length;
+      const s = document.createElement('button');
+      s.className = 'role-stat' + (n === 0 ? ' zero' : '');
+      s.style.background = roleColors[ch.role] || '#64748b';
+      s.textContent = ch.name + ' ' + n;
+      s.addEventListener('click', () => {
+        roleviewEl.querySelector('[data-char="' + ch.name + '"]')
+          ?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      });
+      rowEl.appendChild(s);
+    });
+    statsWrap.appendChild(rowEl);
+  });
+
+  if (noneList.length > 0) {
+    const s = document.createElement('button');
+    s.className = 'role-stat';
+    s.style.background = '#64748b';
+    s.textContent = '未指定 ' + noneList.length;
+    s.addEventListener('click', () => {
+      roleviewEl.querySelector('[data-char="__none__"]')
+        ?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    });
+    if (supportingRow) supportingRow.appendChild(s);
+    else {
+      const r = document.createElement('div');
+      r.className = 'role-stats-row';
+      r.appendChild(s);
+      statsWrap.appendChild(r);
+    }
+  }
+  roleviewEl.appendChild(statsWrap);
+
+  const renderGroup = (charName, color, list) => {
+    if (!list.length) return;
+    const group = document.createElement('div');
+    group.className = 'role-group';
+    group.dataset.char = charName;
+    const lbl = document.createElement('div');
+    lbl.className = 'role-group-label';
+    lbl.style.background = color;
+    lbl.textContent = charName === '__none__' ? '未指定' : charName;
+    group.appendChild(lbl);
+    const wrap = document.createElement('div');
+    wrap.className = 'role-group-cards-wrap';
+    sortByRating(list).forEach(c => wrap.appendChild(buildCard(c)));
+    group.appendChild(wrap);
+    roleviewEl.appendChild(group);
+  };
+
+  characters.forEach(ch =>
+    renderGroup(ch.name, roleColors[ch.role] || '#64748b',
+      comments.filter(c => c.character && c.character.includes(ch.name))));
+  if (noneList.length) renderGroup('__none__', '#64748b', noneList);
+}
+</script>
+</body>
+</html>

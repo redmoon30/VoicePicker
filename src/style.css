@@ -115,7 +115,15 @@ button.ghost {
   display: flex;
   flex-direction: column;
 }
-#comments h3 { margin: 4px 0 12px; font-size: 14px; font-weight: 600; word-break: break-all; }
+.comments-head-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 10px;
+}
+.comments-head-row h3 { margin: 0; font-size: 14px; font-weight: 600; word-break: break-all; flex: 1; }
+#roleViewBtn { font-size: 12px; padding: 6px 12px; white-space: nowrap; flex-shrink: 0; }
 #commentlist { list-style: none; margin: 0; padding: 0; flex: 1; overflow-y: auto; }
 .panel-foot { margin-top: 10px; padding-top: 10px; border-top: 1px solid var(--line); }
 .panel-foot button { width: 100%; }
@@ -267,16 +275,9 @@ button.role-stat:hover { filter: brightness(1.15); }
 .rating-label { font-size: 13px; color: var(--muted); white-space: nowrap; }
 .star-picker { display: flex; gap: 2px; }
 
-/* ---- 回覆 / 討論串 ---- */
-.creplies { margin-top: 6px; padding-left: 10px; border-left: 2px solid var(--line); display: flex; flex-direction: column; gap: 4px; }
-.creply { font-size: 12px; line-height: 1.5; }
-.crauthor { color: var(--muted); }
-.crdel { background: transparent; border: none; color: var(--muted); cursor: pointer; margin-left: 4px; }
-.crdel:hover { color: #f87171; }
-.creply-input { margin-top: 6px; display: flex; gap: 6px; align-items: center; }
-.creply-input input { flex: 1; }
-.creply-toggle { background: transparent; border: none; color: var(--time); cursor: pointer; font-size: 12px; padding: 2px 0; }
-.creply-toggle:hover { filter: none; text-decoration: underline; }
+/* ---- 回覆 / 討論串（暫時隱藏）---- */
+.creplies { display: none !important; }
+.creply-input { display: none !important; }
 .gridcard {
   background: var(--panel);
   border: 1px solid var(--line);
