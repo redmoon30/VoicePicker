@@ -109,6 +109,15 @@ body { margin: 0; background: var(--bg); color: var(--text); }
 }
 .cplay:hover { background: var(--accent); color: #fff; filter: none; }
 .cplay.active { background: var(--accent); color: #fff; }
+
+/* 回覆討論串（唯讀） */
+.creplies {
+  border-top: 1px solid var(--line);
+  margin-top: 8px; padding-top: 6px;
+  display: flex; flex-direction: column; gap: 3px;
+}
+.creply { display: flex; align-items: flex-start; gap: 5px; font-size: 12px; padding: 2px 0; }
+.crauthor { color: var(--accent); font-weight: 500; white-space: nowrap; flex-shrink: 0; }
 </style>
 </head>
 <body>
@@ -345,6 +354,23 @@ function buildCard(c) {
       tagRow.appendChild(tag);
     });
     main.appendChild(tagRow);
+  }
+
+  if (c.replies && c.replies.length > 0) {
+    const rep = document.createElement('div');
+    rep.className = 'creplies';
+    c.replies.forEach(r => {
+      const rr = document.createElement('div');
+      rr.className = 'creply';
+      const ra = document.createElement('span');
+      ra.className = 'crauthor';
+      ra.textContent = r.author + '：';
+      const rt = document.createElement('span');
+      rt.textContent = r.text;
+      rr.append(ra, rt);
+      rep.appendChild(rr);
+    });
+    main.appendChild(rep);
   }
 
   const play = document.createElement('button');

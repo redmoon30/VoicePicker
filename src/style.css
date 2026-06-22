@@ -275,9 +275,36 @@ button.role-stat:hover { filter: brightness(1.15); }
 .rating-label { font-size: 13px; color: var(--muted); white-space: nowrap; }
 .star-picker { display: flex; gap: 2px; }
 
-/* ---- 回覆 / 討論串（暫時隱藏）---- */
-.creplies { display: none !important; }
-.creply-input { display: none !important; }
+/* ---- 回覆 / 討論串 ---- */
+.creplies {
+  border-top: 1px solid var(--line);
+  margin-top: 8px;
+  padding-top: 6px;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+.creply {
+  display: flex;
+  align-items: flex-start;
+  gap: 5px;
+  font-size: 12px;
+  padding: 2px 0;
+}
+.crauthor { color: var(--accent); font-weight: 500; white-space: nowrap; flex-shrink: 0; }
+.crdel {
+  background: transparent; border: none; color: var(--muted);
+  cursor: pointer; padding: 0 2px; font-size: 13px; margin-left: auto; flex-shrink: 0;
+}
+.crdel:hover { color: #f87171; filter: none; }
+.creply-input { margin-top: 5px; display: flex; gap: 6px; }
+.creply-input input { flex: 1; font-size: 13px; padding: 5px 8px; }
+.creply-input button { padding: 5px 10px; font-size: 12px; }
+.creply-toggle {
+  background: transparent; border: none; color: var(--muted);
+  cursor: pointer; font-size: 12px; padding: 4px 0; display: block;
+}
+.creply-toggle:hover { color: var(--text); filter: none; }
 .gridcard {
   background: var(--panel);
   border: 1px solid var(--line);
