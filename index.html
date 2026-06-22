@@ -23,6 +23,7 @@
             <button id="shareBtn" class="ghost">匯出分享版</button>
           </div>
           <input type="file" id="importFile" accept="application/json,.json" class="hidden" />
+          <div id="syncStatus" class="sync-status"></div>
         </div>
       </aside>
 
@@ -114,6 +115,7 @@
       </div>
     </div>
 
+    <div id="syncToast" class="sync-toast hidden"></div>
     <script type="module" src="/src/main.ts"></script>
   </body>
 </html>

@@ -30,6 +30,10 @@ let gridIndex = 0;
 let projectDir: FileSystemDirectoryHandle | null = null;
 let saveTimer: number | undefined;
 
+// ---- 協作輪詢 ----
+let pollTimer: number | undefined;
+let lastSyncTime: number | null = null;
+
 let author = loadAuthor();
 let comments = loadComments();
 let characters = loadCharacters();
@@ -297,6 +301,9 @@ pickBtn.addEventListener('click', async () => {
   entries.sort((a, b) => a.name.localeCompare(b.name, 'zh-Hant', { numeric: true }));
 
   await loadProjectFromDir();
+  lastSyncTime = Date.now();
+  startSyncPolling();
+  renderSyncStatus();
   renderFileList();
   if (entries.length > 0) {
     gridIndex = 0;
@@ -1265,6 +1272,70 @@ ${sectionsHtml || '<p style="color:#9ca3af">尚無留言</p>'}
   setTimeout(() => w.print(), 600);
 }
 ratingsBtn.addEventListener('click', () => { ratingsBtn.blur(); exportCommentsPDF(); });
+
+// ---- 協作輪詢實作 ----
+const POLL_INTERVAL = 30_000;
+
+// 只加入本地沒有的新 ID，不覆蓋本地已有的留言（保護進行中的編輯）
+function pollMerge(incoming: unknown[]): number {
+  const localIds = new Set(comments.map((c) => c.id));
+  const newOnes = incoming
+    .map(normalizeComment)
+    .filter((c) => !localIds.has(c.id));
+  if (newOnes.length === 0) return 0;
+  comments = [...comments, ...newOnes];
+  return newOnes.length;
+}
+
+function startSyncPolling(): void {
+  stopSyncPolling();
+  pollTimer = window.setInterval(async () => {
+    if (!projectDir) { stopSyncPolling(); return; }
+    try {
+      const fh = await projectDir.getFileHandle(PROJECT_FILE);
+      const file = await fh.getFile();
+      const data = JSON.parse(await file.text()) as { comments?: unknown[] };
+      if (!Array.isArray(data?.comments)) return;
+      const added = pollMerge(data.comments);
+      lastSyncTime = Date.now();
+      renderSyncStatus();
+      if (added > 0) {
+        saveComments(comments);
+        renderMarkers();
+        renderFileList();
+        renderComments();
+        if (view === 'role') renderRoleView();
+        showSyncToast(`已同步 ${added} 則新留言`);
+      }
+    } catch {
+      // NAS 暫時無法讀取 → 靜默跳過
+    }
+  }, POLL_INTERVAL);
+}
+
+function stopSyncPolling(): void {
+  if (pollTimer !== undefined) { window.clearInterval(pollTimer); pollTimer = undefined; }
+}
+
+function renderSyncStatus(): void {
+  const el = document.getElementById('syncStatus');
+  if (!el) return;
+  if (!projectDir) { el.textContent = ''; return; }
+  const t = lastSyncTime
+    ? new Date(lastSyncTime).toLocaleTimeString('zh-Hant', { hour: '2-digit', minute: '2-digit', second: '2-digit' })
+    : '—';
+  el.textContent = `↺ 協作同步中 · ${t}`;
+}
+
+let syncToastTimer: number | undefined;
+function showSyncToast(msg: string): void {
+  const toast = document.getElementById('syncToast');
+  if (!toast) return;
+  toast.textContent = msg;
+  toast.classList.remove('hidden');
+  window.clearTimeout(syncToastTimer);
+  syncToastTimer = window.setTimeout(() => toast.classList.add('hidden'), 3000);
+}
 
 // ---- 唯讀分享版匯出 ----
 function generateShareHTML(): void {

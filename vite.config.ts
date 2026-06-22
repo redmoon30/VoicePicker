@@ -1,8 +1,10 @@
 import { defineConfig } from 'vite';
 import pkg from './package.json';
 
-// 把版本號從 package.json 注入成編譯期常數，UI 顯示用。
+// GITHUB_ACTIONS env var 由 GitHub Actions runner 自動設定。
+// 本地 dev / build 維持 base: '/'，GitHub Pages build 使用 '/VoicePicker/'。
 export default defineConfig({
+  base: process.env.GITHUB_ACTIONS ? '/VoicePicker/' : '/',
   define: {
     __APP_VERSION__: JSON.stringify(pkg.version),
   },

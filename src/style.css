@@ -333,3 +333,21 @@ button.primary { align-self: flex-end; }
 #charEditList .rm:hover { color: #f87171; }
 .char-add { display: flex; gap: 8px; }
 .char-add input { flex: 1; }
+
+/* ---- 協作同步狀態 ---- */
+.sync-status { font-size: 11px; color: var(--muted); margin-top: 8px; padding-top: 8px; border-top: 1px solid var(--line); min-height: 18px; }
+
+.sync-toast {
+  position: fixed;
+  bottom: 24px;
+  right: 24px;
+  background: var(--accent);
+  color: #fff;
+  padding: 9px 18px;
+  border-radius: 8px;
+  font-size: 13px;
+  font-weight: 500;
+  z-index: 200;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.35);
+  pointer-events: none;
+}
