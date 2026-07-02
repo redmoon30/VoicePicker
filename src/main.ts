@@ -47,9 +47,11 @@ let replyingId: string | null = null;
 let nameCallback: (() => void) | null = null;
 
 // 角色視圖
+type RoleSortMode = 'rating' | 'file' | 'user';
 let roleCards: Comment[] = []; // 角色視圖中卡片的扁平順序（鍵盤巡覽用）
 let roleFocusIndex = 0;
 let inlinePlayingId: string | null = null; // 角色視圖中就地播放的留言 id
+let roleSortMode: RoleSortMode = 'rating';
 
 // 評分
 let composerRating = 0;
@@ -393,7 +395,7 @@ function buildRatingRow(c: Comment, container: HTMLElement): void {
 
 function buildCommentCard(
   c: Comment,
-  opts: { role?: boolean; ridx?: number; focused?: boolean } = {},
+  opts: { role?: boolean; ridx?: number; focused?: boolean; badge?: '🏆' | '👎' } = {},
 ): HTMLDivElement {
   const card = document.createElement('div');
   card.className = 'citem' + (opts.role ? ' role' : '') + (opts.focused ? ' rolefocus' : '');
@@ -434,6 +436,12 @@ function buildCommentCard(
     const f = document.createElement('span');
     f.className = 'cfile';
     f.textContent = c.file;
+    if (opts.badge) {
+      const badge = document.createElement('span');
+      badge.className = 'cfile-badge';
+      badge.textContent = opts.badge;
+      f.appendChild(badge);
+    }
     row.appendChild(f);
   }
 
@@ -602,10 +610,28 @@ function renderComments(): void {
 }
 
 // ---- 角色 Dashboard ----
+function sortComments(list: Comment[], mode: RoleSortMode): Comment[] {
+  const sorted = [...list];
+  if (mode === 'rating') {
+    sorted.sort((a, b) =>
+      (b.rating - a.rating) ||
+      a.file.localeCompare(b.file, 'zh-Hant', { numeric: true }) ||
+      (a.time ?? -Infinity) - (b.time ?? -Infinity));
+  } else if (mode === 'file') {
+    sorted.sort((a, b) =>
+      a.file.localeCompare(b.file, 'zh-Hant', { numeric: true }) ||
+      (a.time ?? -Infinity) - (b.time ?? -Infinity));
+  } else {
+    sorted.sort((a, b) =>
+      a.author.localeCompare(b.author, 'zh-Hant') ||
+      a.file.localeCompare(b.file, 'zh-Hant', { numeric: true }) ||
+      (a.time ?? -Infinity) - (b.time ?? -Infinity));
+  }
+  return sorted;
+}
+
 function commentsForCharacter(name: string): Comment[] {
-  return comments
-    .filter((c) => c.character.includes(name))
-    .sort((a, b) => (b.rating - a.rating) || a.file.localeCompare(b.file, 'zh-Hant', { numeric: true }) || (a.time ?? -Infinity) - (b.time ?? -Infinity));
+  return sortComments(comments.filter((c) => c.character.includes(name)), roleSortMode);
 }
 
 function renderRoleView(): void {
@@ -624,7 +650,19 @@ function renderRoleView(): void {
   const hint = document.createElement('span');
   hint.className = 'role-hint';
   hint.textContent = '↑↓ 移動 · 空白鍵 就地播放 · Enter 進單檔 · Tab/Esc 返回';
-  head.append(h2, back, hint);
+
+  const sortWrap = document.createElement('div');
+  sortWrap.className = 'role-sort-toggle';
+  (['rating', 'file', 'user'] as RoleSortMode[]).forEach((key) => {
+    const label = key === 'rating' ? '評分' : key === 'file' ? '檔案' : '使用者';
+    const btn = document.createElement('button');
+    btn.className = 'role-sort-btn' + (roleSortMode === key ? ' active' : '');
+    btn.textContent = label;
+    btn.addEventListener('click', () => { roleSortMode = key; renderRoleView(); });
+    sortWrap.appendChild(btn);
+  });
+
+  head.append(h2, back, hint, sortWrap);
   roleviewEl.appendChild(head);
 
   // ── 角色快捷列（依分類分行，可點擊跳轉）──
@@ -694,9 +732,12 @@ function renderRoleView(): void {
 
     const cardsWrap = document.createElement('div');
     cardsWrap.className = 'role-group-cards-wrap';
+    const maxRating = list.reduce((m, c) => Math.max(m, c.rating), 0);
     list.forEach((c) => {
       const ridx = roleCards.length;
-      cardsWrap.appendChild(buildCommentCard(c, { role: true, ridx, focused: ridx === roleFocusIndex }));
+      const badge: '🏆' | '👎' | undefined =
+        c.rating === 0 ? '👎' : c.rating === maxRating ? '🏆' : undefined;
+      cardsWrap.appendChild(buildCommentCard(c, { role: true, ridx, focused: ridx === roleFocusIndex, badge }));
       roleCards.push(c);
     });
     group.appendChild(cardsWrap);
@@ -704,8 +745,7 @@ function renderRoleView(): void {
   };
 
   characters.forEach((ch) => renderGroup(ch.name, ROLE_COLORS[ch.role], commentsForCharacter(ch.name)));
-  renderGroup('__none__', '#64748b', comments.filter((c) => c.character.length === 0)
-    .sort((a, b) => (b.rating - a.rating) || a.file.localeCompare(b.file, 'zh-Hant', { numeric: true })));
+  renderGroup('__none__', '#64748b', sortComments(comments.filter((c) => c.character.length === 0), roleSortMode));
 
   if (roleCards.length === 0) {
     const empty = document.createElement('div');

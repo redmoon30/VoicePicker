@@ -199,6 +199,12 @@ button.ghost {
 .role-head h2 { margin: 0; font-size: 18px; }
 .role-hint { color: var(--muted); font-size: 12px; }
 
+/* 排序切換 */
+.role-sort-toggle { display: flex; gap: 2px; background: var(--line); border-radius: 6px; padding: 2px; margin-left: auto; }
+.role-sort-btn { padding: 3px 10px; border: none; background: transparent; border-radius: 4px; font-size: 12px; color: var(--muted); cursor: pointer; transition: background 0.12s, color 0.12s; }
+.role-sort-btn.active { background: var(--panel); color: var(--text); }
+.role-sort-btn:hover:not(.active) { color: var(--text); }
+
 /* 角色快捷列（依分類分行） */
 .role-stats-wrap { display: flex; flex-direction: column; gap: 7px; margin-bottom: 20px; }
 .role-stats-row { display: flex; align-items: center; flex-wrap: wrap; gap: 6px; }
@@ -254,7 +260,8 @@ button.role-stat:hover { filter: brightness(1.15); }
   justify-content: center;
 }
 .cplay:hover { background: var(--accent); color: #fff; filter: none; }
-.cfile { font-size: 11px; color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 200px; }
+.cfile { font-size: 11px; color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 220px; }
+.cfile-badge { margin-left: 3px; font-size: 12px; }
 
 /* ---- 評分星星 ---- */
 .c-rating { display: flex; gap: 0; margin-top: 4px; }
