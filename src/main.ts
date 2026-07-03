@@ -499,7 +499,7 @@ function buildCommentCard(
   text.addEventListener('blur', () => {
     text.contentEditable = 'false';
     const v = (text.innerText ?? '').trim();
-    if (v) { c.text = v; afterChange(); }
+    if (v && v !== c.text) { pushUndo(); c.text = v; afterChange(); }
     else { text.textContent = c.text; }
   });
   contentEl.appendChild(text);
@@ -526,6 +526,7 @@ function buildCommentCard(
       rd.textContent = '×';
       rd.addEventListener('click', (e) => {
         e.stopPropagation();
+        pushUndo();
         c.replies = c.replies.filter((x) => x.id !== r.id);
         afterChange();
       });
@@ -575,6 +576,7 @@ function buildTagRow(c: Comment, tagRow: HTMLElement): void {
     const picker = document.createElement('div');
     picker.className = 'char-picker';
     renderCharChips(picker, c.character, (name) => {
+      pushUndo();
       toggleName(c.character, name);
       afterChange();
     });
