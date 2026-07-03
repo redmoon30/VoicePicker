@@ -8,7 +8,6 @@ import {
   loadComments, saveComments, normalizeComment,
   loadCharacters, saveCharacters,
 } from './storage';
-import viewerTemplate from './viewer-template.html?raw';
 import externalViewerTemplate from './external-viewer-template.html?raw';
 
 const AUDIO_EXT = new Set(['wav', 'mp3', 'm4a', 'aac', 'ogg', 'flac', 'wma', 'opus']);
@@ -98,9 +97,6 @@ const addCharBtn = $<HTMLButtonElement>('addCharBtn');
 const closeCharBtn = $<HTMLButtonElement>('closeCharBtn');
 const ratingsBtn = $<HTMLButtonElement>('ratingsBtn');
 const shareBtn = $<HTMLButtonElement>('shareBtn');
-const shareModalEl = $<HTMLDivElement>('shareModal');
-const shareCancelBtn = $<HTMLButtonElement>('shareCancelBtn');
-const shareConfirmBtn = $<HTMLButtonElement>('shareConfirmBtn');
 
 // ---- WaveSurfer ----
 const ws = WaveSurfer.create({
@@ -764,7 +760,10 @@ function renderRoleView(): void {
       const ridx = roleCards.length;
       const badge: '🏆' | '👎' | undefined =
         c.rating === 0 ? '👎' : (maxRating > 0 && c.rating === maxRating) ? '🏆' : undefined;
-      cardsWrap.appendChild(buildCommentCard(c, { role: true, ridx, focused: ridx === roleFocusIndex, badge }));
+      const card = buildCommentCard(c, { role: true, ridx, focused: ridx === roleFocusIndex, badge });
+      if (badge === '🏆') card.classList.add('trophy');
+      else if (badge === '👎') card.classList.add('bad');
+      cardsWrap.appendChild(card);
       roleCards.push(c);
     });
     group.appendChild(cardsWrap);
@@ -1409,29 +1408,6 @@ function showSyncToast(msg: string): void {
   syncToastTimer = window.setTimeout(() => toast.classList.add('hidden'), 3000);
 }
 
-// ---- 唯讀分享版匯出 ----
-function generateShareHTML(): void {
-  const safeEmbed = (v: unknown): string =>
-    JSON.stringify(v)
-      .replace(/</g, '\\u003c')
-      .replace(/>/g, '\\u003e')
-      .replace(/&/g, '\\u0026');
-
-  const html = viewerTemplate
-    .replace('{{DATA_JSON}}', () => safeEmbed({ comments, characters, roleColors: ROLE_COLORS }));
-
-  const blob = new Blob([html], { type: 'text/html;charset=utf-8' });
-  const blobUrl = URL.createObjectURL(blob);
-  const d = new Date();
-  const p = (n: number): string => String(n).padStart(2, '0');
-  const stamp = `${d.getFullYear()}${p(d.getMonth() + 1)}${p(d.getDate())}-${p(d.getHours())}${p(d.getMinutes())}`;
-  const a = document.createElement('a');
-  a.href = blobUrl;
-  a.download = `voicepicker-share-${stamp}.html`;
-  a.click();
-  URL.revokeObjectURL(blobUrl);
-}
-
 // ---- 外部分享版匯出（音訊內嵌）----
 async function generateExternalShareHTML(): Promise<void> {
   if (entries.length === 0) {
@@ -1448,13 +1424,13 @@ async function generateExternalShareHTML(): Promise<void> {
     return;
   }
 
-  shareConfirmBtn.disabled = true;
-  shareConfirmBtn.textContent = `處理中 0/${relevant.length}…`;
+  shareBtn.disabled = true;
+  shareBtn.textContent = `處理中 0/${relevant.length}…`;
 
   const audioMap: Record<string, string> = {};
   for (let i = 0; i < relevant.length; i++) {
     const entry = relevant[i];
-    shareConfirmBtn.textContent = `處理中 ${i + 1}/${relevant.length}…`;
+    shareBtn.textContent = `處理中 ${i + 1}/${relevant.length}…`;
     try {
       const file = await entry.handle.getFile();
       const dataUrl = await new Promise<string>((resolve, reject) => {
@@ -1469,8 +1445,8 @@ async function generateExternalShareHTML(): Promise<void> {
     }
   }
 
-  shareConfirmBtn.disabled = false;
-  shareConfirmBtn.textContent = '匯出';
+  shareBtn.disabled = false;
+  shareBtn.textContent = '匯出分享版';
 
   const safeEmbed = (v: unknown): string =>
     JSON.stringify(v)
@@ -1494,20 +1470,7 @@ async function generateExternalShareHTML(): Promise<void> {
   URL.revokeObjectURL(blobUrl);
 }
 
-shareBtn.addEventListener('click', () => {
-  shareBtn.blur();
-  shareModalEl.classList.remove('hidden');
-});
-shareCancelBtn.addEventListener('click', () => shareModalEl.classList.add('hidden'));
-shareConfirmBtn.addEventListener('click', () => {
-  const mode = (shareModalEl.querySelector<HTMLInputElement>('input[name="shareMode"]:checked'))?.value;
-  shareModalEl.classList.add('hidden');
-  if (mode === 'external') {
-    generateExternalShareHTML();
-  } else {
-    generateShareHTML();
-  }
-});
+shareBtn.addEventListener('click', () => { shareBtn.blur(); generateExternalShareHTML(); });
 
 // ---- 角色視圖按鈕 ----
 roleViewBtn.addEventListener('click', () => { roleViewBtn.blur(); setView('role'); });

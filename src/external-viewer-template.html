@@ -70,6 +70,7 @@ body { margin: 0; background: var(--bg); color: var(--text); }
 .crow { display: flex; align-items: center; gap: 8px; }
 .ctime { color: var(--time); font-variant-numeric: tabular-nums; font-size: 13px; white-space: nowrap; }
 .cfile { font-size: 11px; color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 200px; }
+.cfile-badge { margin-left: 3px; font-size: 12px; }
 .cauthor { color: var(--muted); font-size: 11px; margin-left: auto; white-space: nowrap; }
 .c-rating { display: flex; margin-top: 4px; }
 .c-star { color: var(--line); font-size: 14px; padding: 0 1px; }
@@ -267,8 +268,11 @@ function sortByRating(list) {
 function buildCard(c, maxRating) {
   const card  = document.createElement('div');
   const isTrophy = maxRating > 0 && c.rating === maxRating;
-  const ratingHighlight = isTrophy ? ' trophy' : c.rating === 0 ? ' bad' : '';
+  const isBad = c.rating === 0;
+  const ratingHighlight = isTrophy ? ' trophy' : isBad ? ' bad' : '';
   card.className = 'citem' + ratingHighlight;
+  if (isTrophy) card.classList.add('trophy');
+  else if (isBad) card.classList.add('bad');
   const inner = document.createElement('div');
   inner.className = 'card-inner';
   const main  = document.createElement('div');
@@ -283,6 +287,12 @@ function buildCard(c, maxRating) {
   fileEl.className = 'cfile';
   fileEl.title = c.file;
   fileEl.textContent = c.file;
+  if (isTrophy || isBad) {
+    const badgeEl = document.createElement('span');
+    badgeEl.className = 'cfile-badge';
+    badgeEl.textContent = isTrophy ? '🏆' : '👎';
+    fileEl.appendChild(badgeEl);
+  }
   const authEl = document.createElement('span');
   authEl.className = 'cauthor';
   authEl.textContent = c.author;
