@@ -59,6 +59,14 @@ let roleZeroFilter: RoleZeroFilter = 'all';
 // 評分
 let composerRating = 0;
 
+// ---- Undo ----
+const MAX_UNDO = 50;
+const undoStack: Comment[][] = [];
+function pushUndo(): void {
+  undoStack.push(JSON.parse(JSON.stringify(comments)));
+  if (undoStack.length > MAX_UNDO) undoStack.shift();
+}
+
 // ---- DOM ----
 const $ = <T extends HTMLElement>(id: string): T => document.getElementById(id) as T;
 const pickBtn = $<HTMLButtonElement>('pick');
@@ -176,6 +184,14 @@ function countComments(file: string): number {
 }
 function charColor(names: string[]): string {
   return (names.length ? colorByName(names[0], characters) : null) ?? '#3b82f6';
+}
+
+function undo(): void {
+  const prev = undoStack.pop();
+  if (!prev) { showSyncToast('沒有可還原的操作'); return; }
+  comments = prev;
+  afterChange();
+  showSyncToast('已還原');
 }
 
 // 任何留言/回覆/角色變更後的統一刷新
@@ -382,10 +398,11 @@ function buildRatingRow(c: Comment, container: HTMLElement): void {
     btn.type = 'button';
     btn.className = 'c-star' + (i <= c.rating ? ' filled' : '');
     btn.textContent = '★';
-    btn.title = `${i} 分${c.rating === i ? '（再按清除）' : ''}`;
+    btn.title = `${i} 分${i === 1 ? '（1星再按清除）' : ''}`;
     btn.addEventListener('click', (e) => {
       e.stopPropagation();
-      c.rating = (c.rating === i) ? 0 : i;
+      pushUndo();
+      c.rating = (i === 1 && c.rating === 1) ? 0 : i;
       afterChange();
     });
     el.appendChild(btn);
@@ -458,6 +475,7 @@ function buildCommentCard(
   del.title = '刪除';
   del.addEventListener('click', (e) => {
     e.stopPropagation();
+    pushUndo();
     comments = comments.filter((x) => x.id !== c.id);
     afterChange();
   });
@@ -898,7 +916,7 @@ function drawComposerRating(): void {
     btn.title = `${i} 分`;
     btn.addEventListener('click', (e) => {
       e.stopPropagation();
-      composerRating = composerRating === i ? 0 : i;
+      composerRating = (i === 1 && composerRating === 1) ? 0 : i;
       drawComposerRating();
     });
     composerRatingEl.appendChild(btn);
@@ -996,7 +1014,7 @@ function handleComposerKey(ev: KeyboardEvent): void {
   if (ev.shiftKey && /^Digit[0-5]$/.test(ev.code)) {
     ev.preventDefault();
     const v = parseInt(ev.code[5]);
-    composerRating = composerRating === v ? 0 : v;
+    composerRating = (v === 0 || (v === 1 && composerRating === 1)) ? 0 : v;
     drawComposerRating();
     return;
   }
@@ -1226,6 +1244,11 @@ document.addEventListener('keydown', (ev) => {
     rerenderActive();
     return;
   }
+  if ((ev.ctrlKey || ev.metaKey) && ev.code === 'KeyZ' && !ev.shiftKey) {
+    if (!anyModalOpen() && !isTyping()) { ev.preventDefault(); undo(); }
+    return;
+  }
+
   if (anyModalOpen() || isTyping()) return;
 
   if (view === 'role') {
@@ -1233,7 +1256,11 @@ document.addEventListener('keydown', (ev) => {
       ev.preventDefault();
       const v = parseInt(ev.code[5]);
       const c = roleCards[roleFocusIndex];
-      if (c) { c.rating = c.rating === v ? 0 : v; afterChange(); }
+      if (c) {
+        pushUndo();
+        c.rating = (v === 0 || (v === 1 && c.rating === 1)) ? 0 : v;
+        afterChange();
+      }
       return;
     }
     if (ev.code === 'Tab' || ev.code === 'Escape') { ev.preventDefault(); setView('single'); return; }
