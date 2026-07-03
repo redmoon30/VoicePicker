@@ -1,0 +1,437 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>VoicePicker 外部試聽版</title>
+<style>
+:root {
+  --bg: #1e2430; --panel: #262e3d; --line: #38445a;
+  --text: #e6ebf2; --muted: #8a97ad; --accent: #3b82f6; --time: #60a5fa;
+  font-family: system-ui,"Microsoft JhengHei",sans-serif;
+}
+* { box-sizing: border-box; }
+body { margin: 0; background: var(--bg); color: var(--text); }
+.hidden { display: none !important; }
+
+/* ── 頂部播放列 ── */
+#player-bar {
+  position: fixed; top: 0; left: 0; right: 0; z-index: 100;
+  background: var(--panel); border-bottom: 1px solid var(--line);
+  height: 52px; padding: 0 18px;
+  display: flex; align-items: center; gap: 12px;
+}
+#bar-logo { font-size: 13px; font-weight: 700; white-space: nowrap; }
+.badge-ro {
+  font-size: 11px; font-weight: 500; padding: 2px 8px;
+  background: #374151; border-radius: 999px; color: var(--muted);
+  vertical-align: middle; margin-left: 4px;
+}
+#bar-file {
+  font-size: 12px; color: var(--muted); white-space: nowrap;
+  overflow: hidden; text-overflow: ellipsis; max-width: 220px;
+}
+#bar-seek { flex: 1; accent-color: var(--accent); cursor: pointer; min-width: 60px; }
+#bar-time { font-size: 12px; color: var(--muted); white-space: nowrap; font-variant-numeric: tabular-nums; min-width: 88px; }
+#bar-vol { width: 72px; accent-color: var(--accent); }
+#bar-err { font-size: 11px; color: #f87171; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 240px; }
+
+/* ── 主內容 ── */
+#main { padding: 68px 24px 40px; max-width: 1100px; margin: 0 auto; }
+.view-title { display: flex; align-items: center; gap: 10px; margin-bottom: 16px; }
+.view-title h2 { margin: 0; font-size: 18px; }
+
+/* 角色快捷列 */
+.role-stats-wrap { display: flex; flex-direction: column; gap: 7px; margin-bottom: 20px; }
+.role-stats-row { display: flex; align-items: center; flex-wrap: wrap; gap: 6px; }
+.role-stats-type { font-size: 11px; color: var(--muted); white-space: nowrap; flex-shrink: 0; }
+.role-stat {
+  font-size: 12px; padding: 3px 10px; border-radius: 999px;
+  color: #fff; border: none; cursor: pointer;
+}
+.role-stat:hover { filter: brightness(1.15); }
+.role-stat.zero { opacity: 0.35; }
+
+/* 角色群組 */
+.role-group { display: flex; margin-bottom: 14px; border-radius: 8px; overflow: hidden; border: 1px solid var(--line); }
+.role-group-label {
+  width: 68px; flex-shrink: 0;
+  display: flex; align-items: center; justify-content: center;
+  font-size: 13px; font-weight: 600; color: #fff;
+  padding: 12px 6px; word-break: break-all; text-align: center; line-height: 1.4;
+}
+.role-group-cards-wrap { flex: 1; min-width: 0; padding: 8px; display: flex; flex-direction: column; gap: 6px; }
+
+/* 留言卡 */
+.citem { border: 1px solid var(--line); border-radius: 6px; padding: 8px 10px; }
+.citem.playing { border-color: var(--accent); }
+.card-inner { display: flex; align-items: center; gap: 10px; }
+.card-main { flex: 1; min-width: 0; }
+.crow { display: flex; align-items: center; gap: 8px; }
+.ctime { color: var(--time); font-variant-numeric: tabular-nums; font-size: 13px; white-space: nowrap; }
+.cfile { font-size: 11px; color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 200px; }
+.cauthor { color: var(--muted); font-size: 11px; margin-left: auto; white-space: nowrap; }
+.c-rating { display: flex; margin-top: 4px; }
+.c-star { color: var(--line); font-size: 14px; padding: 0 1px; }
+.c-star.filled { color: #f59e0b; }
+.ctext { font-size: 13px; margin-top: 5px; white-space: pre-wrap; line-height: 1.5; }
+.ctag-row { margin-top: 6px; display: flex; flex-wrap: wrap; gap: 5px; }
+.ctag { display: inline-block; font-size: 11px; padding: 2px 9px; border-radius: 999px; color: #fff; }
+
+/* 播放鈕 */
+.cplay {
+  flex-shrink: 0; width: 46px; height: 46px;
+  border-radius: 50%; border: 2px solid var(--accent);
+  color: var(--accent); background: transparent; font-size: 17px;
+  cursor: pointer; display: flex; align-items: center; justify-content: center; padding: 0;
+}
+.cplay:hover { background: var(--accent); color: #fff; filter: none; }
+.cplay.active { background: var(--accent); color: #fff; }
+.cplay:disabled { opacity: 0.3; cursor: default; }
+.cplay:disabled:hover { background: transparent; color: var(--accent); }
+
+/* 回覆討論串（唯讀） */
+.creplies {
+  border-top: 1px solid var(--line);
+  margin-top: 8px; padding-top: 6px;
+  display: flex; flex-direction: column; gap: 3px;
+}
+.creply { display: flex; align-items: flex-start; gap: 5px; font-size: 12px; padding: 2px 0; }
+.crauthor { color: var(--accent); font-weight: 500; white-space: nowrap; flex-shrink: 0; }
+
+/* 篩選工具列 */
+.view-tools { display: flex; align-items: center; gap: 8px; margin-left: auto; }
+.tool-btn {
+  padding: 3px 10px; border: none; background: var(--line); border-radius: 4px;
+  font-size: 12px; color: var(--muted); cursor: pointer;
+}
+.tool-btn:hover { filter: brightness(1.1); }
+.tool-btn.hide { background: #78350f; color: #fde68a; }
+.tool-btn.solo { background: var(--accent); color: #fff; }
+</style>
+</head>
+<body>
+
+<div id="player-bar">
+  <span id="bar-logo">VoicePicker <span class="badge-ro">外部試聽版</span></span>
+  <span id="bar-file">—</span>
+  <input id="bar-seek" type="range" min="0" max="100" step="0.1" value="0">
+  <span id="bar-time">0:00 / 0:00</span>
+  <input id="bar-vol" type="range" min="0" max="1" step="0.01" value="0.8" title="音量">
+  <span id="bar-err"></span>
+</div>
+
+<div id="main">
+  <div class="view-title">
+    <h2>角色 Dashboard</h2>
+    <div class="view-tools">
+      <button id="zeroFilterBtn" class="tool-btn" title="點擊隱藏 0 分評論">👎</button>
+    </div>
+  </div>
+  <div id="roleview"></div>
+</div>
+
+<audio id="audio" preload="none"></audio>
+
+<script>
+const RAW = {{DATA_JSON}};
+const AUDIO_RAW = {{AUDIO_JSON}};
+const { comments, characters, roleColors } = RAW;
+
+// ── DOM ──
+const audio      = document.getElementById('audio');
+const barFile    = document.getElementById('bar-file');
+const barSeek    = document.getElementById('bar-seek');
+const barTime    = document.getElementById('bar-time');
+const barVol     = document.getElementById('bar-vol');
+const barErrEl   = document.getElementById('bar-err');
+const roleviewEl = document.getElementById('roleview');
+
+// ── 狀態 ──
+const blobUrls = new Map(); // filename → blob URL (lazy convert)
+let loadedFile  = null;
+let activeCard  = null;
+let activeId    = null;
+let zeroFilter  = 'all'; // 'all' | 'hide' | 'solo'
+
+audio.volume = 0.8;
+
+// ── Base64 → Blob URL（lazy，點播時轉換）──
+function getAudioUrl(filename) {
+  if (blobUrls.has(filename)) return blobUrls.get(filename);
+  const dataUrl = AUDIO_RAW[filename];
+  if (!dataUrl) return null;
+  const [header, b64] = dataUrl.split(',');
+  const mime = (header.match(/:(.*?);/) || [])[1] || 'audio/wav';
+  const raw = atob(b64);
+  const arr = new Uint8Array(raw.length);
+  for (let i = 0; i < raw.length; i++) arr[i] = raw.charCodeAt(i);
+  const url = URL.createObjectURL(new Blob([arr], { type: mime }));
+  blobUrls.set(filename, url);
+  return url;
+}
+
+// ── 播放器事件 ──
+audio.addEventListener('timeupdate', () => {
+  if (!isFinite(audio.duration) || audio.duration === 0) return;
+  barSeek.value = (audio.currentTime / audio.duration) * 100;
+  barTime.textContent = ft(audio.currentTime) + ' / ' + ft(audio.duration);
+});
+audio.addEventListener('loadedmetadata', () => {
+  barTime.textContent = '0:00 / ' + ft(audio.duration);
+  barSeek.value = 0;
+});
+audio.addEventListener('ended', deactivate);
+audio.addEventListener('error', () => {
+  barErrEl.textContent = '⚠ 無法載入 ' + (loadedFile || '音檔');
+  deactivate();
+});
+barSeek.addEventListener('input', () => {
+  if (isFinite(audio.duration) && audio.duration > 0)
+    audio.currentTime = (parseFloat(barSeek.value) / 100) * audio.duration;
+});
+barVol.addEventListener('input', () => { audio.volume = parseFloat(barVol.value); });
+
+function ft(s) {
+  if (!isFinite(s) || s < 0) return '0:00';
+  return Math.floor(s / 60) + ':' + String(Math.floor(s % 60)).padStart(2, '0');
+}
+function deactivate() {
+  if (!activeCard) return;
+  const btn = activeCard.querySelector('.cplay');
+  if (btn) { btn.textContent = '▶'; btn.classList.remove('active'); }
+  activeCard.classList.remove('playing');
+  activeCard = null; activeId = null;
+}
+async function togglePlay(c, card) {
+  if (activeId === c.id && !audio.paused) {
+    audio.pause();
+    card.querySelector('.cplay').textContent = '▶';
+    card.querySelector('.cplay').classList.remove('active');
+    return;
+  }
+  if (activeCard && activeCard !== card) deactivate();
+  barErrEl.textContent = '';
+  if (!AUDIO_RAW[c.file]) {
+    barErrEl.textContent = '⚠ 此音檔未包含於分享版';
+    return;
+  }
+  if (loadedFile !== c.file) {
+    const url = getAudioUrl(c.file);
+    if (!url) { barErrEl.textContent = '⚠ 無法解析：' + c.file; return; }
+    audio.src = url;
+    loadedFile = c.file;
+    barFile.textContent = c.file;
+    await new Promise((res, rej) => {
+      audio.addEventListener('loadedmetadata', res, { once: true });
+      audio.addEventListener('error', rej, { once: true });
+      audio.load();
+    }).catch(() => null);
+    if (audio.error) return;
+  }
+  audio.currentTime = (c.time !== null && c.time !== undefined) ? c.time : 0;
+  activeCard = card; activeId = c.id;
+  card.querySelector('.cplay').textContent = '⏸';
+  card.querySelector('.cplay').classList.add('active');
+  card.classList.add('playing');
+  await audio.play().catch(() => {});
+}
+
+// ── 角色顏色 ──
+function colorByName(name) {
+  const ch = characters.find(c => c.name === name);
+  return (ch && roleColors[ch.role]) ? roleColors[ch.role] : '#3b82f6';
+}
+
+// ── 篩選 ──
+function applyZeroFilter(list) {
+  if (zeroFilter === 'hide') return list.filter(c => (c.rating || 0) > 0);
+  if (zeroFilter === 'solo') return list.filter(c => (c.rating || 0) === 0);
+  return list;
+}
+
+// ── 排序 ──
+function sortByRating(list) {
+  return [...list].sort((a, b) =>
+    ((b.rating || 0) - (a.rating || 0)) ||
+    String(a.file).localeCompare(String(b.file), 'zh-Hant', { numeric: true }) ||
+    ((a.time ?? -Infinity) - (b.time ?? -Infinity)));
+}
+
+// ── 建留言卡（唯讀）──
+function buildCard(c) {
+  const card  = document.createElement('div');
+  card.className = 'citem';
+  const inner = document.createElement('div');
+  inner.className = 'card-inner';
+  const main  = document.createElement('div');
+  main.className = 'card-main';
+
+  const row   = document.createElement('div');
+  row.className = 'crow';
+  const timeEl = document.createElement('span');
+  timeEl.className = 'ctime';
+  timeEl.textContent = (c.time !== null && c.time !== undefined) ? ft(c.time) : '整體';
+  const fileEl = document.createElement('span');
+  fileEl.className = 'cfile';
+  fileEl.title = c.file;
+  fileEl.textContent = c.file;
+  const authEl = document.createElement('span');
+  authEl.className = 'cauthor';
+  authEl.textContent = c.author;
+  row.append(timeEl, fileEl, authEl);
+  main.appendChild(row);
+
+  if (c.rating > 0) {
+    const rEl = document.createElement('div');
+    rEl.className = 'c-rating';
+    for (let i = 1; i <= 5; i++) {
+      const s = document.createElement('span');
+      s.className = 'c-star' + (i <= c.rating ? ' filled' : '');
+      s.textContent = '★';
+      rEl.appendChild(s);
+    }
+    main.appendChild(rEl);
+  }
+
+  const textEl = document.createElement('div');
+  textEl.className = 'ctext';
+  textEl.textContent = c.text;
+  main.appendChild(textEl);
+
+  if (c.character && c.character.length > 0) {
+    const tagRow = document.createElement('div');
+    tagRow.className = 'ctag-row';
+    c.character.forEach(nm => {
+      const tag = document.createElement('span');
+      tag.className = 'ctag';
+      tag.style.background = colorByName(nm);
+      tag.textContent = nm;
+      tagRow.appendChild(tag);
+    });
+    main.appendChild(tagRow);
+  }
+
+  if (c.replies && c.replies.length > 0) {
+    const rep = document.createElement('div');
+    rep.className = 'creplies';
+    c.replies.forEach(r => {
+      const rr = document.createElement('div');
+      rr.className = 'creply';
+      const ra = document.createElement('span');
+      ra.className = 'crauthor';
+      ra.textContent = r.author + '：';
+      const rt = document.createElement('span');
+      rt.textContent = r.text;
+      rr.append(ra, rt);
+      rep.appendChild(rr);
+    });
+    main.appendChild(rep);
+  }
+
+  const play = document.createElement('button');
+  play.className = 'cplay';
+  play.textContent = '▶';
+  if (!AUDIO_RAW[c.file]) play.disabled = true;
+  play.addEventListener('click', e => { e.stopPropagation(); togglePlay(c, card).catch(() => {}); });
+  inner.append(main, play);
+  card.appendChild(inner);
+  return card;
+}
+
+// ── 角色 Dashboard 渲染 ──
+function renderRoleView() {
+  roleviewEl.innerHTML = '';
+  const ROLE_LABELS = { lead: '主角', supporting: '配角', mascot: '吉祥物' };
+  const ROLE_ORDER  = ['lead', 'mascot', 'supporting'];
+  const noneList    = applyZeroFilter(comments.filter(c => !c.character || c.character.length === 0));
+
+  const statsWrap = document.createElement('div');
+  statsWrap.className = 'role-stats-wrap';
+  let supportingRow = null;
+
+  ROLE_ORDER.forEach(role => {
+    const charsOfRole = characters.filter(ch => ch.role === role);
+    if (!charsOfRole.length) return;
+    const rowEl = document.createElement('div');
+    rowEl.className = 'role-stats-row';
+    if (role === 'supporting') supportingRow = rowEl;
+    const typeLabel = document.createElement('span');
+    typeLabel.className = 'role-stats-type';
+    typeLabel.textContent = ROLE_LABELS[role] || role;
+    typeLabel.style.color = roleColors[role] || '#8a97ad';
+    rowEl.appendChild(typeLabel);
+    charsOfRole.forEach(ch => {
+      const n = comments.filter(c => c.character && c.character.includes(ch.name)).length;
+      const s = document.createElement('button');
+      s.className = 'role-stat' + (n === 0 ? ' zero' : '');
+      s.style.background = roleColors[ch.role] || '#64748b';
+      s.textContent = ch.name + ' ' + n;
+      s.addEventListener('click', () => {
+        roleviewEl.querySelector('[data-char="' + ch.name + '"]')
+          ?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      });
+      rowEl.appendChild(s);
+    });
+    statsWrap.appendChild(rowEl);
+  });
+
+  const totalNone = comments.filter(c => !c.character || c.character.length === 0).length;
+  if (totalNone > 0) {
+    const s = document.createElement('button');
+    s.className = 'role-stat';
+    s.style.background = '#64748b';
+    s.textContent = '未指定 ' + totalNone;
+    s.addEventListener('click', () => {
+      roleviewEl.querySelector('[data-char="__none__"]')
+        ?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    });
+    if (supportingRow) supportingRow.appendChild(s);
+    else {
+      const r = document.createElement('div');
+      r.className = 'role-stats-row';
+      r.appendChild(s);
+      statsWrap.appendChild(r);
+    }
+  }
+  roleviewEl.appendChild(statsWrap);
+
+  const renderGroup = (charName, color, list) => {
+    if (!list.length) return;
+    const group = document.createElement('div');
+    group.className = 'role-group';
+    group.dataset.char = charName;
+    const lbl = document.createElement('div');
+    lbl.className = 'role-group-label';
+    lbl.style.background = color;
+    lbl.textContent = charName === '__none__' ? '未指定' : charName;
+    group.appendChild(lbl);
+    const wrap = document.createElement('div');
+    wrap.className = 'role-group-cards-wrap';
+    sortByRating(list).forEach(c => wrap.appendChild(buildCard(c)));
+    group.appendChild(wrap);
+    roleviewEl.appendChild(group);
+  };
+
+  characters.forEach(ch =>
+    renderGroup(ch.name, roleColors[ch.role] || '#64748b',
+      applyZeroFilter(comments.filter(c => c.character && c.character.includes(ch.name)))));
+  if (noneList.length) renderGroup('__none__', '#64748b', noneList);
+}
+
+// ── 👎 篩選按鈕 ──
+const ZERO_NEXT = { all: 'hide', hide: 'solo', solo: 'all' };
+const ZERO_TITLES = { all: '點擊隱藏 0 分評論', hide: '0 分已隱藏 · 再按 Solo', solo: 'Solo 0 分 · 再按恢復' };
+const zeroFilterBtn = document.getElementById('zeroFilterBtn');
+zeroFilterBtn.addEventListener('click', () => {
+  zeroFilter = ZERO_NEXT[zeroFilter];
+  zeroFilterBtn.className = 'tool-btn' + (zeroFilter !== 'all' ? ' ' + zeroFilter : '');
+  zeroFilterBtn.title = ZERO_TITLES[zeroFilter];
+  renderRoleView();
+});
+
+// ── 啟動 ──
+renderRoleView();
+</script>
+</body>
+</html>

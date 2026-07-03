@@ -9,6 +9,7 @@ import {
   loadCharacters, saveCharacters,
 } from './storage';
 import viewerTemplate from './viewer-template.html?raw';
+import externalViewerTemplate from './external-viewer-template.html?raw';
 
 const AUDIO_EXT = new Set(['wav', 'mp3', 'm4a', 'aac', 'ogg', 'flac', 'wma', 'opus']);
 const GRID_COLS = 4;
@@ -1427,14 +1428,81 @@ function generateShareHTML(): void {
   URL.revokeObjectURL(blobUrl);
 }
 
+// ---- 外部分享版匯出（音訊內嵌）----
+async function generateExternalShareHTML(): Promise<void> {
+  if (entries.length === 0) {
+    alert('請先選擇音檔資料夾後再匯出外部分享版。');
+    return;
+  }
+
+  // 只包含有留言的音檔
+  const filesWithComments = new Set(comments.map((c) => c.file));
+  const relevant = entries.filter((e) => filesWithComments.has(e.name));
+
+  if (relevant.length === 0) {
+    alert('目前沒有任何留言，無法產生分享版。');
+    return;
+  }
+
+  shareConfirmBtn.disabled = true;
+  shareConfirmBtn.textContent = `處理中 0/${relevant.length}…`;
+
+  const audioMap: Record<string, string> = {};
+  for (let i = 0; i < relevant.length; i++) {
+    const entry = relevant[i];
+    shareConfirmBtn.textContent = `處理中 ${i + 1}/${relevant.length}…`;
+    try {
+      const file = await entry.handle.getFile();
+      const dataUrl = await new Promise<string>((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = () => resolve(reader.result as string);
+        reader.onerror = reject;
+        reader.readAsDataURL(file);
+      });
+      audioMap[entry.name] = dataUrl;
+    } catch {
+      // 無法讀取的檔案跳過，播放時顯示警告
+    }
+  }
+
+  shareConfirmBtn.disabled = false;
+  shareConfirmBtn.textContent = '匯出';
+
+  const safeEmbed = (v: unknown): string =>
+    JSON.stringify(v)
+      .replace(/</g, '\\u003c')
+      .replace(/>/g, '\\u003e')
+      .replace(/&/g, '\\u0026');
+
+  const html = externalViewerTemplate
+    .replace('{{DATA_JSON}}', () => safeEmbed({ comments, characters, roleColors: ROLE_COLORS }))
+    .replace('{{AUDIO_JSON}}', () => safeEmbed(audioMap));
+
+  const blob = new Blob([html], { type: 'text/html;charset=utf-8' });
+  const blobUrl = URL.createObjectURL(blob);
+  const d = new Date();
+  const p = (n: number): string => String(n).padStart(2, '0');
+  const stamp = `${d.getFullYear()}${p(d.getMonth() + 1)}${p(d.getDate())}-${p(d.getHours())}${p(d.getMinutes())}`;
+  const a = document.createElement('a');
+  a.href = blobUrl;
+  a.download = `voicepicker-external-${stamp}.html`;
+  a.click();
+  URL.revokeObjectURL(blobUrl);
+}
+
 shareBtn.addEventListener('click', () => {
   shareBtn.blur();
   shareModalEl.classList.remove('hidden');
 });
 shareCancelBtn.addEventListener('click', () => shareModalEl.classList.add('hidden'));
 shareConfirmBtn.addEventListener('click', () => {
+  const mode = (shareModalEl.querySelector<HTMLInputElement>('input[name="shareMode"]:checked'))?.value;
   shareModalEl.classList.add('hidden');
-  generateShareHTML();
+  if (mode === 'external') {
+    generateExternalShareHTML();
+  } else {
+    generateShareHTML();
+  }
 });
 
 // ---- 角色視圖按鈕 ----

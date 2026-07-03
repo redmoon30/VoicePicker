@@ -106,9 +106,23 @@
     <div id="shareModal" class="modal hidden">
       <div class="modal-box">
         <div class="modal-head">匯出唯讀分享版</div>
-        <div class="picker-label">將目前所有留言與角色資料打包成一個 HTML 檔。</div>
-        <div class="picker-label">同事用 <strong style="color:var(--text)">Chrome 或 Edge</strong> 開啟後，選擇 NAS 上同一個音檔資料夾即可試聽，無法刪改留言。</div>
-        <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:8px">
+        <div class="share-opts">
+          <label class="share-opt">
+            <input type="radio" name="shareMode" value="internal" checked />
+            <div class="share-opt-body">
+              <div class="share-opt-title">🏢 內部版</div>
+              <div class="share-opt-desc">接收方選取 NAS 上同一個音檔資料夾後試聽（需連接公司網路）</div>
+            </div>
+          </label>
+          <label class="share-opt">
+            <input type="radio" name="shareMode" value="external" />
+            <div class="share-opt-body">
+              <div class="share-opt-title">🌐 外部版</div>
+              <div class="share-opt-desc">音訊嵌入 HTML，只包含有評語的音檔；單一檔案即可開啟試聽，不需 NAS</div>
+            </div>
+          </label>
+        </div>
+        <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:12px">
           <button id="shareCancelBtn" class="ghost">取消</button>
           <button id="shareConfirmBtn" class="primary">匯出</button>
         </div>
