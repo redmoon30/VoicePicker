@@ -402,7 +402,8 @@ function buildCommentCard(
   opts: { role?: boolean; ridx?: number; focused?: boolean; badge?: '🏆' | '👎' } = {},
 ): HTMLDivElement {
   const card = document.createElement('div');
-  card.className = 'citem' + (opts.role ? ' role' : '') + (opts.focused ? ' rolefocus' : '');
+  const ratingHighlight = c.rating === 5 ? ' trophy' : c.rating === 0 ? ' bad' : '';
+  card.className = 'citem' + (opts.role ? ' role' : '') + (opts.focused ? ' rolefocus' : '') + ratingHighlight;
   if (opts.role && opts.ridx !== undefined) card.dataset.ridx = String(opts.ridx);
 
   // 角色視圖：兩欄佈局（左：內容 / 右：播放鈕）
@@ -673,22 +674,21 @@ function renderRoleView(): void {
   });
 
   const ZERO_NEXT: Record<RoleZeroFilter, RoleZeroFilter> = { all: 'hide', hide: 'solo', solo: 'all' };
-  const ZERO_TITLES: Record<RoleZeroFilter, string> = {
-    all: '點擊隱藏 0 分評論',
-    hide: '0 分已隱藏 · 再按 Solo',
-    solo: 'Solo 0 分 · 再按恢復',
-  };
+  const ZERO_LABELS: Record<RoleZeroFilter, string> = { all: '全部留言', hide: '隱藏 👎', solo: 'solo 👎' };
   const zeroFilterBtn = document.createElement('button');
   zeroFilterBtn.className = 'role-zero-btn' + (roleZeroFilter !== 'all' ? ' ' + roleZeroFilter : '');
-  zeroFilterBtn.textContent = '👎';
-  zeroFilterBtn.title = ZERO_TITLES[roleZeroFilter];
+  zeroFilterBtn.textContent = ZERO_LABELS[roleZeroFilter];
   zeroFilterBtn.addEventListener('click', () => {
     roleZeroFilter = ZERO_NEXT[roleZeroFilter];
     renderRoleView();
   });
 
   head.append(h2, back, hint, sortWrap, compactBtn, zeroFilterBtn);
-  roleviewEl.appendChild(head);
+
+  // ── sticky 容器：header + 角色快捷列 ──
+  const stickyHead = document.createElement('div');
+  stickyHead.className = 'role-sticky';
+  stickyHead.appendChild(head);
 
   // ── 角色快捷列（依分類分行，可點擊跳轉）──
   const ROLE_ORDER = ['lead', 'mascot', 'supporting'] as const;
@@ -740,7 +740,8 @@ function renderRoleView(): void {
       statsWrap.appendChild(rowEl);
     }
   }
-  roleviewEl.appendChild(statsWrap);
+  stickyHead.appendChild(statsWrap);
+  roleviewEl.appendChild(stickyHead);
 
   // ── 各角色群組（左側色塊 Label + 右側卡片）──
   const renderGroup = (charName: string, color: string, list: Comment[]): void => {
@@ -1265,7 +1266,9 @@ document.addEventListener('keydown', (ev) => {
     case 'KeyD': case 'ArrowRight': ev.preventDefault(); seekBy(5); break;
     case 'KeyW': case 'ArrowUp': ev.preventDefault(); jumpMarker(-1); break;
     case 'KeyS': case 'ArrowDown': ev.preventDefault(); jumpMarker(1); break;
-    case 'KeyC': case 'KeyX': ev.preventDefault(); startComment(); break;
+    case 'KeyC': case 'KeyX':
+      if (!ev.ctrlKey && !ev.metaKey) { ev.preventDefault(); startComment(); }
+      break;
     case 'Tab': ev.preventDefault(); if (entries.length) setView('grid'); break;
   }
 });
