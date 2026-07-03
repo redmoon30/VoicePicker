@@ -101,10 +101,10 @@ body { margin: 0; background: var(--bg); color: var(--text); }
 
 /* ── 留言卡底色 ── */
 .citem.trophy { background: rgba(245, 158, 11, 0.10); border-color: rgba(245, 158, 11, 0.40); }
-.citem.bad    { background: rgba(100, 116, 139, 0.12); border-color: rgba(100, 116, 139, 0.30); }
+.citem.bad    { background: rgba(100, 116, 139, 0.12); border-color: rgba(100, 116, 139, 0.30); color: rgba(230, 235, 242, 0.30); }
 
 /* 篩選工具列 */
-.view-title { position: sticky; top: 0; z-index: 10; background: var(--bg); padding: 12px 0 10px; border-bottom: 1px solid var(--line); margin-bottom: 16px; }
+.view-title { position: sticky; top: 52px; z-index: 10; background: var(--bg); padding: 12px 0 10px; border-bottom: 1px solid var(--line); margin-bottom: 16px; }
 .view-tools { display: flex; align-items: center; gap: 8px; margin-left: auto; }
 .tool-btn {
   padding: 3px 10px; border: none; background: var(--line); border-radius: 4px;
@@ -427,7 +427,7 @@ function renderRoleView() {
 
 // ── 👎 篩選按鈕 ──
 const ZERO_NEXT = { all: 'hide', hide: 'solo', solo: 'all' };
-const ZERO_LABELS = { all: '全部留言', hide: '隱藏 👎', solo: 'solo 👎' };
+const ZERO_LABELS = { all: '隱藏 👎', hide: 'solo 👎', solo: '全部留言' };
 const zeroFilterBtn = document.getElementById('zeroFilterBtn');
 zeroFilterBtn.textContent = ZERO_LABELS[zeroFilter];
 zeroFilterBtn.addEventListener('click', () => {

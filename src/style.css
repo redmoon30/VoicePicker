@@ -194,11 +194,11 @@ button.ghost {
 .gridhint { grid-column: 1 / -1; color: var(--muted); font-size: 12px; padding: 0 2px 6px; }
 
 /* ---- 角色 Dashboard ---- */
-#roleview { flex: 1; min-width: 0; overflow: auto; padding: 20px 24px; }
+#roleview { flex: 1; min-width: 0; overflow: auto; padding: 0 24px 20px; }
 .role-sticky {
   position: sticky; top: 0; z-index: 10;
   background: var(--bg);
-  padding-bottom: 10px;
+  padding: 14px 0 10px;
   border-bottom: 1px solid var(--line);
   margin-bottom: 16px;
 }
@@ -266,7 +266,7 @@ button.role-stat:hover { filter: brightness(1.15); }
 .citem.role { cursor: pointer; }
 .citem.rolefocus { outline: 2px solid var(--accent); outline-offset: 1px; }
 .citem.trophy { background: rgba(245, 158, 11, 0.10); border-color: rgba(245, 158, 11, 0.40); }
-.citem.bad    { background: rgba(100, 116, 139, 0.12); border-color: rgba(100, 116, 139, 0.30); }
+.citem.bad    { background: rgba(100, 116, 139, 0.12); border-color: rgba(100, 116, 139, 0.30); color: rgba(230, 235, 242, 0.30); }
 .card-inner { display: flex; align-items: center; gap: 10px; }
 .card-main { flex: 1; min-width: 0; }
 .cplay {

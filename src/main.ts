@@ -674,7 +674,8 @@ function renderRoleView(): void {
   });
 
   const ZERO_NEXT: Record<RoleZeroFilter, RoleZeroFilter> = { all: 'hide', hide: 'solo', solo: 'all' };
-  const ZERO_LABELS: Record<RoleZeroFilter, string> = { all: '全部留言', hide: '隱藏 👎', solo: 'solo 👎' };
+  // 按鈕文字顯示「點擊後做什麼」，而非當前狀態
+  const ZERO_LABELS: Record<RoleZeroFilter, string> = { all: '隱藏 👎', hide: 'solo 👎', solo: '全部留言' };
   const zeroFilterBtn = document.createElement('button');
   zeroFilterBtn.className = 'role-zero-btn' + (roleZeroFilter !== 'all' ? ' ' + roleZeroFilter : '');
   zeroFilterBtn.textContent = ZERO_LABELS[roleZeroFilter];
@@ -758,11 +759,10 @@ function renderRoleView(): void {
 
     const cardsWrap = document.createElement('div');
     cardsWrap.className = 'role-group-cards-wrap';
-    const maxRating = list.reduce((m, c) => Math.max(m, c.rating), 0);
     list.forEach((c) => {
       const ridx = roleCards.length;
       const badge: '🏆' | '👎' | undefined =
-        c.rating === 0 ? '👎' : c.rating === maxRating ? '🏆' : undefined;
+        c.rating === 5 ? '🏆' : c.rating === 0 ? '👎' : undefined;
       cardsWrap.appendChild(buildCommentCard(c, { role: true, ridx, focused: ridx === roleFocusIndex, badge }));
       roleCards.push(c);
     });
