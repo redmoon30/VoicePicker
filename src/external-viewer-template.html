@@ -264,9 +264,10 @@ function sortByRating(list) {
 }
 
 // ── 建留言卡（唯讀）──
-function buildCard(c) {
+function buildCard(c, maxRating) {
   const card  = document.createElement('div');
-  const ratingHighlight = c.rating === 5 ? ' trophy' : c.rating === 0 ? ' bad' : '';
+  const isTrophy = maxRating > 0 && c.rating === maxRating;
+  const ratingHighlight = isTrophy ? ' trophy' : c.rating === 0 ? ' bad' : '';
   card.className = 'citem' + ratingHighlight;
   const inner = document.createElement('div');
   inner.className = 'card-inner';
@@ -414,7 +415,8 @@ function renderRoleView() {
     group.appendChild(lbl);
     const wrap = document.createElement('div');
     wrap.className = 'role-group-cards-wrap';
-    sortByRating(list).forEach(c => wrap.appendChild(buildCard(c)));
+    const maxRating = list.reduce((m, c) => Math.max(m, c.rating || 0), 0);
+    sortByRating(list).forEach(c => wrap.appendChild(buildCard(c, maxRating)));
     group.appendChild(wrap);
     roleviewEl.appendChild(group);
   };

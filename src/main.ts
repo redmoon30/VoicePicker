@@ -402,7 +402,7 @@ function buildCommentCard(
   opts: { role?: boolean; ridx?: number; focused?: boolean; badge?: '🏆' | '👎' } = {},
 ): HTMLDivElement {
   const card = document.createElement('div');
-  const ratingHighlight = c.rating === 5 ? ' trophy' : c.rating === 0 ? ' bad' : '';
+  const ratingHighlight = opts.badge === '🏆' ? ' trophy' : opts.badge === '👎' ? ' bad' : '';
   card.className = 'citem' + (opts.role ? ' role' : '') + (opts.focused ? ' rolefocus' : '') + ratingHighlight;
   if (opts.role && opts.ridx !== undefined) card.dataset.ridx = String(opts.ridx);
 
@@ -759,10 +759,11 @@ function renderRoleView(): void {
 
     const cardsWrap = document.createElement('div');
     cardsWrap.className = 'role-group-cards-wrap';
+    const maxRating = list.reduce((m, c) => Math.max(m, c.rating), 0);
     list.forEach((c) => {
       const ridx = roleCards.length;
       const badge: '🏆' | '👎' | undefined =
-        c.rating === 5 ? '🏆' : c.rating === 0 ? '👎' : undefined;
+        c.rating === 0 ? '👎' : (maxRating > 0 && c.rating === maxRating) ? '🏆' : undefined;
       cardsWrap.appendChild(buildCommentCard(c, { role: true, ridx, focused: ridx === roleFocusIndex, badge }));
       roleCards.push(c);
     });
