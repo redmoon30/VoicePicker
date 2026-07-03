@@ -8,6 +8,14 @@ import { type Comment, type Reply } from './types';
 const K_AUTHOR = 'voicepicker.author';
 const K_COMMENTS = 'voicepicker.comments';
 const K_CHARS = 'voicepicker.characters';
+const K_DELETED = 'voicepicker.deleted_ids';
+
+export function loadDeletedIds(): string[] {
+  try { return JSON.parse(localStorage.getItem(K_DELETED) ?? '[]'); } catch { return []; }
+}
+export function saveDeletedIds(ids: string[]): void {
+  localStorage.setItem(K_DELETED, JSON.stringify(ids));
+}
 
 export function loadAuthor(): string {
   return localStorage.getItem(K_AUTHOR) ?? '';

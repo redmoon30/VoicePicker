@@ -7,6 +7,7 @@ import {
   loadAuthor, saveAuthor,
   loadComments, saveComments, normalizeComment,
   loadCharacters, saveCharacters,
+  loadDeletedIds, saveDeletedIds,
 } from './storage';
 import externalViewerTemplate from './external-viewer-template.html?raw';
 
@@ -59,11 +60,18 @@ let roleZeroFilter: RoleZeroFilter = 'all';
 // 評分
 let composerRating = 0;
 
+// ---- 刪除紀錄（Tombstone）----
+let deletedIds: Set<string> = new Set(loadDeletedIds());
+
 // ---- Undo ----
 const MAX_UNDO = 50;
-const undoStack: Comment[][] = [];
+type UndoSnapshot = { comments: Comment[]; deletedIds: string[] };
+const undoStack: UndoSnapshot[] = [];
 function pushUndo(): void {
-  undoStack.push(JSON.parse(JSON.stringify(comments)));
+  undoStack.push({
+    comments: JSON.parse(JSON.stringify(comments)),
+    deletedIds: [...deletedIds],
+  });
   if (undoStack.length > MAX_UNDO) undoStack.shift();
 }
 
@@ -189,7 +197,9 @@ function charColor(names: string[]): string {
 function undo(): void {
   const prev = undoStack.pop();
   if (!prev) { showSyncToast('沒有可還原的操作'); return; }
-  comments = prev;
+  comments = prev.comments;
+  deletedIds = new Set(prev.deletedIds);
+  saveDeletedIds(prev.deletedIds);
   afterChange();
   showSyncToast('已還原');
 }
@@ -224,16 +234,20 @@ async function writeProject(): Promise<void> {
   try {
     const fh = await projectDir.getFileHandle(PROJECT_FILE, { create: true });
     const w = await fh.createWritable();
-    await w.write(JSON.stringify({ version: 1, updated: new Date().toISOString(), comments }, null, 2));
+    await w.write(JSON.stringify({ version: 1, updated: new Date().toISOString(), comments, deletedIds: [...deletedIds] }, null, 2));
     await w.close();
   } catch {
     // 權限不足/唯讀 → 略過
   }
 }
-// 合併：以 id 去重，傳入的留言覆蓋同 id；保留本地獨有（避免轉換時遺失）
-function mergeComments(incoming: Comment[]): void {
-  const byId = new Map(comments.map((c) => [c.id, c]));
-  incoming.forEach((c) => byId.set(c.id, c));
+// 合併：以 id 去重，傳入的留言覆蓋同 id；刪除紀錄取聯集；已刪除的 id 不回來
+function mergeComments(incoming: Comment[], incomingDeleted: string[] = []): void {
+  incomingDeleted.forEach((id) => deletedIds.add(id));
+  saveDeletedIds([...deletedIds]);
+  const byId = new Map(
+    comments.filter((c) => !deletedIds.has(c.id)).map((c) => [c.id, c]),
+  );
+  incoming.forEach((c) => { if (!deletedIds.has(c.id)) byId.set(c.id, c); });
   comments = [...byId.values()];
 }
 async function loadProjectFromDir(): Promise<void> {
@@ -243,7 +257,8 @@ async function loadProjectFromDir(): Promise<void> {
     const file = await fh.getFile();
     const data = JSON.parse(await file.text());
     if (Array.isArray(data?.comments)) {
-      mergeComments((data.comments as unknown[]).map(normalizeComment)); // 合併，不覆蓋本地既有
+      const incomingDeleted = Array.isArray(data?.deletedIds) ? (data.deletedIds as string[]) : [];
+      mergeComments((data.comments as unknown[]).map(normalizeComment), incomingDeleted);
       saveComments(comments);
     }
   } catch {
@@ -254,7 +269,7 @@ async function loadProjectFromDir(): Promise<void> {
 // ---- 匯出 / 匯入 備份 ----
 function exportBackup(): void {
   const payload = JSON.stringify(
-    { version: 1, exported: new Date().toISOString(), comments, characters },
+    { version: 1, exported: new Date().toISOString(), comments, characters, deletedIds: [...deletedIds] },
     null,
     2,
   );
@@ -269,27 +284,39 @@ function exportBackup(): void {
   a.click();
   URL.revokeObjectURL(url);
 }
-async function importBackup(file: File): Promise<void> {
+let importMode: 'merge' | 'replace' = 'merge';
+async function importBackup(file: File, mode: 'merge' | 'replace'): Promise<void> {
   try {
     const data = JSON.parse(await file.text());
-    if (Array.isArray(data?.comments)) {
-      mergeComments((data.comments as unknown[]).map(normalizeComment));
+    const incomingDeleted = Array.isArray(data?.deletedIds) ? (data.deletedIds as string[]) : [];
+    if (mode === 'replace') {
+      comments = Array.isArray(data?.comments)
+        ? (data.comments as unknown[]).map(normalizeComment) : [];
+      deletedIds = new Set(incomingDeleted);
+      saveDeletedIds(incomingDeleted);
+    } else {
+      if (Array.isArray(data?.comments)) {
+        mergeComments((data.comments as unknown[]).map(normalizeComment), incomingDeleted);
+      }
     }
     if (Array.isArray(data?.characters) && data.characters.length > 0) {
       characters = data.characters as Character[];
       saveCharacters(characters);
     }
     afterChange();
-    alert(`匯入完成：目前共 ${comments.length} 則留言。`);
+    const modeLabel = mode === 'replace' ? '覆蓋匯入' : '合併匯入';
+    alert(`${modeLabel}完成：目前共 ${comments.length} 則留言。`);
   } catch {
     alert('匯入失敗：檔案不是有效的 VoicePicker 備份。');
   }
 }
+const importOverwriteBtn = $<HTMLButtonElement>('importOverwriteBtn');
 exportBtn.addEventListener('click', () => { exportBtn.blur(); exportBackup(); });
-importBtn.addEventListener('click', () => { importBtn.blur(); importFile.click(); });
+importBtn.addEventListener('click', () => { importMode = 'merge'; importBtn.blur(); importFile.click(); });
+importOverwriteBtn.addEventListener('click', () => { importMode = 'replace'; importOverwriteBtn.blur(); importFile.click(); });
 importFile.addEventListener('change', () => {
   const f = importFile.files?.[0];
-  if (f) void importBackup(f);
+  if (f) void importBackup(f, importMode);
   importFile.value = '';
 });
 
@@ -476,6 +503,8 @@ function buildCommentCard(
   del.addEventListener('click', (e) => {
     e.stopPropagation();
     pushUndo();
+    deletedIds.add(c.id);
+    saveDeletedIds([...deletedIds]);
     comments = comments.filter((x) => x.id !== c.id);
     afterChange();
   });
