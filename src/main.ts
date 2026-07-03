@@ -48,11 +48,13 @@ let nameCallback: (() => void) | null = null;
 
 // 角色視圖
 type RoleSortMode = 'rating' | 'file' | 'user';
+type RoleZeroFilter = 'all' | 'hide' | 'solo';
 let roleCards: Comment[] = []; // 角色視圖中卡片的扁平順序（鍵盤巡覽用）
 let roleFocusIndex = 0;
 let inlinePlayingId: string | null = null; // 角色視圖中就地播放的留言 id
 let roleSortMode: RoleSortMode = 'rating';
 let roleCompact = false;
+let roleZeroFilter: RoleZeroFilter = 'all';
 
 // 評分
 let composerRating = 0;
@@ -624,7 +626,10 @@ function sortComments(list: Comment[], mode: RoleSortMode): Comment[] {
 }
 
 function commentsForCharacter(name: string): Comment[] {
-  return sortComments(comments.filter((c) => c.character.includes(name)), roleSortMode);
+  let list = comments.filter((c) => c.character.includes(name));
+  if (roleZeroFilter === 'hide') list = list.filter((c) => c.rating > 0);
+  else if (roleZeroFilter === 'solo') list = list.filter((c) => c.rating === 0);
+  return sortComments(list, roleSortMode);
 }
 
 function renderRoleView(): void {
@@ -666,7 +671,22 @@ function renderRoleView(): void {
     compactBtn.classList.toggle('active', roleCompact);
   });
 
-  head.append(h2, back, hint, sortWrap, compactBtn);
+  const ZERO_NEXT: Record<RoleZeroFilter, RoleZeroFilter> = { all: 'hide', hide: 'solo', solo: 'all' };
+  const ZERO_TITLES: Record<RoleZeroFilter, string> = {
+    all: '點擊隱藏 0 分評論',
+    hide: '0 分已隱藏 · 再按 Solo',
+    solo: 'Solo 0 分 · 再按恢復',
+  };
+  const zeroFilterBtn = document.createElement('button');
+  zeroFilterBtn.className = 'role-zero-btn' + (roleZeroFilter !== 'all' ? ' ' + roleZeroFilter : '');
+  zeroFilterBtn.textContent = '👎';
+  zeroFilterBtn.title = ZERO_TITLES[roleZeroFilter];
+  zeroFilterBtn.addEventListener('click', () => {
+    roleZeroFilter = ZERO_NEXT[roleZeroFilter];
+    renderRoleView();
+  });
+
+  head.append(h2, back, hint, sortWrap, compactBtn, zeroFilterBtn);
   roleviewEl.appendChild(head);
 
   // ── 角色快捷列（依分類分行，可點擊跳轉）──
@@ -749,7 +769,10 @@ function renderRoleView(): void {
   };
 
   characters.forEach((ch) => renderGroup(ch.name, ROLE_COLORS[ch.role], commentsForCharacter(ch.name)));
-  renderGroup('__none__', '#64748b', sortComments(comments.filter((c) => c.character.length === 0), roleSortMode));
+  let noneList = comments.filter((c) => c.character.length === 0);
+  if (roleZeroFilter === 'hide') noneList = noneList.filter((c) => c.rating > 0);
+  else if (roleZeroFilter === 'solo') noneList = noneList.filter((c) => c.rating === 0);
+  renderGroup('__none__', '#64748b', sortComments(noneList, roleSortMode));
 
   if (roleCards.length === 0) {
     const empty = document.createElement('div');

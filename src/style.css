@@ -203,6 +203,11 @@ button.ghost {
 .role-compact-btn { padding: 3px 10px; border: none; background: var(--line); border-radius: 4px; font-size: 12px; color: var(--muted); cursor: pointer; transition: background 0.12s, color 0.12s; }
 .role-compact-btn.active { background: var(--accent); color: #fff; }
 
+/* 0 分篩選切換 */
+.role-zero-btn { padding: 3px 8px; border: none; background: var(--line); border-radius: 4px; font-size: 14px; color: var(--muted); cursor: pointer; transition: background 0.12s, color 0.12s; }
+.role-zero-btn.hide { background: #78350f; color: #fde68a; }
+.role-zero-btn.solo { background: var(--accent); color: #fff; }
+
 /* 簡潔模式：隱藏回覆與標籤，雙欄排列 */
 #roleview.role-compact .creplies,
 #roleview.role-compact .creply-input,
