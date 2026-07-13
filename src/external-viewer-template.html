@@ -71,7 +71,6 @@ body { margin: 0; background: var(--bg); color: var(--text); }
 .ctime { color: var(--time); font-variant-numeric: tabular-nums; font-size: 13px; white-space: nowrap; }
 .cfile { font-size: 11px; color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 200px; }
 .cfile-badge { margin-left: 3px; font-size: 12px; }
-.cauthor { color: var(--muted); font-size: 11px; margin-left: auto; white-space: nowrap; }
 .c-rating { display: flex; margin-top: 4px; }
 .c-star { color: var(--line); font-size: 14px; padding: 0 1px; }
 .c-star.filled { color: #f59e0b; }
@@ -114,6 +113,15 @@ body { margin: 0; background: var(--bg); color: var(--text); }
 .tool-btn:hover { filter: brightness(1.1); }
 .tool-btn.hide { background: #78350f; color: #fde68a; }
 .tool-btn.solo { background: var(--accent); color: #fff; }
+
+/* 圖例 */
+.legend {
+  background: var(--panel); border: 1px solid var(--line); border-radius: 6px;
+  padding: 7px 12px; font-size: 11px; color: var(--muted);
+  display: flex; flex-direction: column; gap: 5px; max-width: 280px;
+}
+.legend-item { display: flex; align-items: flex-start; gap: 7px; line-height: 1.45; }
+.legend-badge { font-size: 13px; flex-shrink: 0; margin-top: 1px; }
 </style>
 </head>
 <body>
@@ -131,6 +139,10 @@ body { margin: 0; background: var(--bg); color: var(--text); }
   <div class="view-title">
     <h2>角色 Dashboard</h2>
     <div class="view-tools">
+      <div class="legend">
+        <div class="legend-item"><span class="legend-badge">🏆</span><span>最適合的方案，可參考我們的挑選原因</span></div>
+        <div class="legend-item"><span class="legend-badge">👎</span><span>我們認為不適合的方向，或是希望避開的聲音表演元素</span></div>
+      </div>
       <button id="zeroFilterBtn" class="tool-btn">全部留言</button>
     </div>
   </div>
@@ -293,10 +305,7 @@ function buildCard(c, maxRating) {
     badgeEl.textContent = isTrophy ? '🏆' : '👎';
     fileEl.appendChild(badgeEl);
   }
-  const authEl = document.createElement('span');
-  authEl.className = 'cauthor';
-  authEl.textContent = c.author;
-  row.append(timeEl, fileEl, authEl);
+  row.append(timeEl, fileEl);
   main.appendChild(row);
 
   if (c.rating > 0) {
