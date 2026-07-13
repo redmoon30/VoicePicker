@@ -427,8 +427,8 @@ function renderRoleView() {
   const legendEl = document.createElement('div');
   legendEl.className = 'legend';
   legendEl.innerHTML =
-    '<div class="legend-item"><span class="legend-badge">🏆</span><span>最適合的方案，可參考我們的挑選原因</span></div>' +
-    '<div class="legend-item"><span class="legend-badge">👎</span><span>我們認為不適合的方向，或是希望避開的聲音表演元素</span></div>';
+    '<div class="legend-item"><span class="legend-badge">🏆</span><span>相對最適合的方案，分數代表契合度。可參考我們的挑選原因</span></div>' +
+    '<div class="legend-item"><span class="legend-badge">👎</span><span>我們認為不適合的方向，或是希望避開的聲音表演元素（可按右上角按鈕顯示或隱藏）</span></div>';
   statsLegendRow.appendChild(legendEl);
   roleviewEl.appendChild(statsLegendRow);
 
