@@ -41,8 +41,9 @@ body { margin: 0; background: var(--bg); color: var(--text); }
 .view-title { display: flex; align-items: center; gap: 10px; margin-bottom: 16px; }
 .view-title h2 { margin: 0; font-size: 18px; }
 
-/* 角色快捷列 */
-.role-stats-wrap { display: flex; flex-direction: column; gap: 7px; margin-bottom: 20px; }
+/* 角色快捷列 + 圖例橫排 */
+.stats-legend-row { display: flex; align-items: flex-start; gap: 20px; margin-bottom: 16px; }
+.role-stats-wrap { display: flex; flex-direction: column; gap: 7px; flex: 1; min-width: 0; }
 .role-stats-row { display: flex; align-items: center; flex-wrap: wrap; gap: 6px; }
 .role-stats-type { font-size: 11px; color: var(--muted); white-space: nowrap; flex-shrink: 0; }
 .role-stat {
@@ -60,7 +61,7 @@ body { margin: 0; background: var(--bg); color: var(--text); }
   font-size: 13px; font-weight: 600; color: #fff;
   padding: 12px 6px; word-break: break-all; text-align: center; line-height: 1.4;
 }
-.role-group-cards-wrap { flex: 1; min-width: 0; padding: 8px; display: flex; flex-direction: column; gap: 6px; }
+.role-group-cards-wrap { flex: 1; min-width: 0; padding: 8px; display: grid; grid-template-columns: repeat(2, 1fr); gap: 6px; }
 
 /* 留言卡 */
 .citem { border: 1px solid var(--line); border-radius: 6px; padding: 8px 10px; }
@@ -90,6 +91,9 @@ body { margin: 0; background: var(--bg); color: var(--text); }
 .cplay:disabled { opacity: 0.3; cursor: default; }
 .cplay:disabled:hover { background: transparent; color: var(--accent); }
 
+/* 簡潔模式（永久）：隱藏回覆與角色標籤 */
+.creplies, .ctag-row { display: none !important; }
+
 /* 回覆討論串（唯讀） */
 .creplies {
   border-top: 1px solid var(--line);
@@ -114,11 +118,12 @@ body { margin: 0; background: var(--bg); color: var(--text); }
 .tool-btn.hide { background: #78350f; color: #fde68a; }
 .tool-btn.solo { background: var(--accent); color: #fff; }
 
-/* 圖例 */
+/* 圖例（內容區右側） */
 .legend {
   background: var(--panel); border: 1px solid var(--line); border-radius: 6px;
-  padding: 7px 12px; font-size: 11px; color: var(--muted);
-  display: flex; flex-direction: column; gap: 5px; max-width: 280px;
+  padding: 9px 13px; font-size: 11px; color: var(--muted);
+  display: flex; flex-direction: column; gap: 6px;
+  width: 250px; flex-shrink: 0;
 }
 .legend-item { display: flex; align-items: flex-start; gap: 7px; line-height: 1.45; }
 .legend-badge { font-size: 13px; flex-shrink: 0; margin-top: 1px; }
@@ -139,10 +144,6 @@ body { margin: 0; background: var(--bg); color: var(--text); }
   <div class="view-title">
     <h2>角色 Dashboard</h2>
     <div class="view-tools">
-      <div class="legend">
-        <div class="legend-item"><span class="legend-badge">🏆</span><span>最適合的方案，可參考我們的挑選原因</span></div>
-        <div class="legend-item"><span class="legend-badge">👎</span><span>我們認為不適合的方向，或是希望避開的聲音表演元素</span></div>
-      </div>
       <button id="zeroFilterBtn" class="tool-btn">全部留言</button>
     </div>
   </div>
@@ -420,7 +421,16 @@ function renderRoleView() {
       statsWrap.appendChild(r);
     }
   }
-  roleviewEl.appendChild(statsWrap);
+  const statsLegendRow = document.createElement('div');
+  statsLegendRow.className = 'stats-legend-row';
+  statsLegendRow.appendChild(statsWrap);
+  const legendEl = document.createElement('div');
+  legendEl.className = 'legend';
+  legendEl.innerHTML =
+    '<div class="legend-item"><span class="legend-badge">🏆</span><span>最適合的方案，可參考我們的挑選原因</span></div>' +
+    '<div class="legend-item"><span class="legend-badge">👎</span><span>我們認為不適合的方向，或是希望避開的聲音表演元素</span></div>';
+  statsLegendRow.appendChild(legendEl);
+  roleviewEl.appendChild(statsLegendRow);
 
   const renderGroup = (charName, color, list) => {
     if (!list.length) return;
